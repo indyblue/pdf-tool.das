@@ -48,10 +48,15 @@ function writePDF(t) {
 
 	// colors
 	op.add(op.omake(),'<<',
-		'/Cs1 [ /Separation /RedLetter /DeviceCMYK',
+		'/CsRed [ /Separation /RedLetter /DeviceCMYK',
 		' << /FunctionType 2 /Domain [0 1]',
 		'  /Range [0 1 0 1 0 1 0 1]',
 		'  /C0 [0 0 0 0] /C1 [0 1 1 0]',
+		'  /Domain [0 1] /N 1 >> ]',
+		'/CsBlack [ /Separation /BlackLetter /DeviceCMYK',
+		' << /FunctionType 2 /Domain [0 1]',
+		'  /Range [0 1 0 1 0 1 0 1]',
+		'  /C0 [0 0 0 0] /C1 [1 1 1 1]',
 		'  /Domain [0 1] /N 1 >> ]',
 		'>>','endobj');
 

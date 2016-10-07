@@ -24,17 +24,19 @@ function objPage(po, style) {
 	t.fsize = 12;
 	t.flead = 14;
 	t.color = '0 g'; // '0 1 1 0 k' for red
+	t.align = 'j';
 	var setprop = function(key, val) {
 		//console.log(t[key], key, val);
 		if(typeof val != 'undefined' && val!=null)
 			t[key] = val;
 		//console.log(t[key], key, val);
 	};
-	t.setStyle = function(fid, fsize, flead, color) {
+	t.setStyle = function(fid, fsize, flead, color, align) {
 		setprop('fid', fid);
 		setprop('fsize', fsize);
 		setprop('flead', flead);
 		setprop('color', color);
+		setprop('align', align);
 		q.cl += '] TJ '+t.style()+' [';
 	};
 	t.style = () => ' /F'+t.fid+' '+t.fsize+' Tf '+t.flead+' TL '+t.color+' ';
@@ -45,21 +47,40 @@ function objPage(po, style) {
 	q.x = q.x0;
 	q.xm = (t.width - t.margin) * t.dpi;
 	var line = new objLine(t);
+	t.box = function() {
+		return ' '+q.x0+' '+q.x0+' '
+			+((t.width-2*t.margin)*t.dpi)+' '
+			+((t.height-2*t.margin)*t.dpi)+' re s ';
+	};
 	t.startText = function() {
-		t.stream = 'BT '+t.style()+' '+q.x0+' '+q.y0+' Td 0 -'+t.flead+' TD';
+		t.stream += '\n BT '+t.style()+' '+q.x0+' '+q.y0+' Td ';
 	};
 	t.endText = function() {
 		t.nl();
 		t.stream += ' ET';
 	};
 	q.cl = '';
+	q.ptl = '';
 	t.nl = function() {
-		var  num = q.cl.match(/s0s/g).length;
-		var adj = (q.xm - q.x) * 1000 /t.fsize / num;
-		if(adj>1000) adj=0;
-		q.cl = q.cl.replace(/s0s/g, -round(adj,2));
-		t.stream += ' [' + q.cl + '] TJ 0 -'+t.flead+' TD \n';
+		var adj = 0;
+		var open = ' 0 -'+t.flead+' TD [ ';
+		if(t.align=='j') {
+			var  num = q.cl.match(/s0s/g).length;
+			adj = -round((q.xm - q.x) * 1000 /t.fsize / num, 2);
+			if(adj<-1000) adj=0;
+		} else if(t.align=='c') {
+			cadj = -round((q.xm - q.x) * 1000 / 2, 2);
+			open = ' 0 -'+t.flead+' TD /F'+t.fid+' 1 Tf ['+cadj+'] TJ /F'+t.fid+' '+t.fsize+' Tf [ ';
+			console.log(q.x, q.xm, (q.xm-q.x)/2, cadj, open);
+			//open = '['+cadj;
+		}
+
+		q.cl = q.cl.replace(/s0s/g, adj);
+		//console.log(q.ptl);
+		t.stream += '\n% '+q.ptl +'\n';
+		t.stream += open + q.cl + '] TJ \n';
 		q.cl = '';
+		q.ptl = '';
 		q.x = q.x0
 	};
 	t.addText = function(txt, style) {
@@ -70,10 +91,12 @@ function objPage(po, style) {
 			if(q.x+sp[0]+aw[0]>q.xm) t.nl();
 			if(q.x>q.x0) {
 				q.cl += sp[1] + ' s0s ';
+				q.ptl += sp[2];
 				q.x += sp[0];
 			}
-			console.log(aw);
+			//console.log(aw);
 			q.cl += aw[1];
+			q.ptl += aw[2];
 			q.x += aw[0];
 		};
 	};

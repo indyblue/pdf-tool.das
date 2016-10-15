@@ -6,7 +6,6 @@ function objPage(po, style) {
 	t.margin = 0.25;
 	t.dpi = 72;
 	t.stream = '';
-	po.pages.push(t);
 
 	t.writePage = function(op, parRef, strRef) {
 		op.add(op.omake(),
@@ -34,10 +33,17 @@ function objPage(po, style) {
 	t.setStyle = function(fid, fsize, flead, color, align) {
 		setprop('fid', fid);
 		setprop('fsize', fsize);
+		var rxlead = /^(\d+)%$/;
+		if(rxlead.test(flead)) {
+			var lead = rxlead.exec(flead)[1] / 100;
+			var font = t.pdf.fonts[t.fid-1];
+			flead = t.fsize * lead * font.metric.capheight / font.metric.unitsPerEm;
+			//console.log(t.fsize, lead, font.metric.capheight , font.metric.unitsPerEm, flead);
+		}
 		setprop('flead', flead);
 		setprop('color', color);
 		setprop('align', align);
-		q.cl += '] TJ '+t.style()+' [';
+		t.cl += '] TJ '+t.style()+' [';
 	};
 	t.style = () => ' /F'+t.fid+' '+t.fsize+' Tf '+t.flead+' TL '+t.color+' ';
 	
@@ -45,6 +51,8 @@ function objPage(po, style) {
 	q.x0 = t.margin * t.dpi;
 	q.y0 = (t.height-t.margin) * t.dpi;
 	q.x = q.x0;
+	q.y = q.y0;
+	q.ym = q.x0;
 	q.xm = (t.width - t.margin) * t.dpi;
 	var line = new objLine(t);
 	t.box = function() {
@@ -59,48 +67,81 @@ function objPage(po, style) {
 		t.nl();
 		t.stream += ' ET';
 	};
-	q.cl = '';
+	t.cl = '';
 	q.ptl = '';
-	t.nl = function() {
+	q.spaces = function(txt, adj) {
+		var matches = txt.match(/s0s/g);
+		var len = 0;
+		if(Array.isArray(matches)) 
+			len = matches.length;
+		if(typeof adj == 'undefined')
+			return len;
+		else 
+			return adj/len;
+	};
+	t.nl = function(isAuto) {
+		if(typeof isAuto=='undefined') isAuto = false;
+
 		var adj = 0;
 		var open = ' 0 -'+t.flead+' TD [ ';
-		if(t.align=='j') {
-			var  num = q.cl.match(/s0s/g).length;
-			adj = -round((q.xm - q.x) * 1000 /t.fsize / num, 2);
+		if(t.align=='j' && isAuto) {
+			//var  num = q.spaces(t.cl);
+			adj = -round((q.xm - q.x) * 1000 /t.fsize, 2);
+			adj = q.spaces(t.cl, adj);
 			if(adj<-1000) adj=0;
 		} else if(t.align=='c') {
 			cadj = -round((q.xm - q.x) * 1000 / 2, 2);
 			open = ' 0 -'+t.flead+' TD /F'+t.fid+' 1 Tf ['+cadj+'] TJ /F'+t.fid+' '+t.fsize+' Tf [ ';
-			console.log(q.x, q.xm, (q.xm-q.x)/2, cadj, open);
+			//console.log(q.x, q.xm, (q.xm-q.x)/2, cadj, open);
 			//open = '['+cadj;
 		}
+		t.cl = t.cl.replace(/s0s/g, adj);
 
-		q.cl = q.cl.replace(/s0s/g, adj);
-		//console.log(q.ptl);
-		t.stream += '\n% '+q.ptl +'\n';
-		t.stream += open + q.cl + '] TJ \n';
-		q.cl = '';
+		q.y -= t.flead;
+		if(q.y<q.ym) {
+			//*
+			var newp = null;
+			if(t!=po.cp) newp = po.cp;
+			else {
+				newp = po.newPage(po, null);
+				newp.startText();
+			}
+			newp.setStyle(q.fid, q.fsize, q.flead, q.color, q.align);
+			console.log(q.y, q.ym, q.y0, po.pages.length, q.ptl);
+			newp.cl = t.cl;
+			newp.nl();
+			t.stream += ' ET';
+			// */
+		} else {
+			//console.log(q.ptl);
+			t.stream += '\n% '+q.ptl +'\n';
+			t.stream += open + t.cl + '] TJ \n';
+		}
+		t.cl = '';
 		q.ptl = '';
-		q.x = q.x0
+		q.x = q.x0;
+		//t.addText(Math.round(q.y) + ' '+q.y0+'/'+q.ym+' ');
 	};
-	t.addText = function(txt, style) {
+	t.addText = function(txt, isBlock) {
 		var sp = line.parseWord(' ');
 		var awords = txt.split(/\s+/);
 		for(var i=0;i<awords.length;i++){
 			var aw = line.parseWord(awords[i]);
-			if(q.x+sp[0]+aw[0]>q.xm) t.nl();
+			if(q.x+sp[0]+aw[0]>q.xm) t.nl(true);
 			if(q.x>q.x0) {
-				q.cl += sp[1] + ' s0s ';
+				t.cl += sp[1] + ' s0s ';
 				q.ptl += sp[2];
 				q.x += sp[0];
 			}
 			//console.log(aw);
-			q.cl += aw[1];
+			t.cl += aw[1];
 			q.ptl += aw[2];
 			q.x += aw[0];
 		};
+		if(isBlock) t.nl();
 	};
 
+	po.pages.push(t);
 	return t;
 }
 
@@ -254,7 +295,7 @@ function objLine(pg) {
 }
 
 module.exports = {
-	add: objPage
+	add: (po, style)=> new objPage(po, style)
 };
 
 function round(x, n) {

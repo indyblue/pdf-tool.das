@@ -50,7 +50,11 @@ function fnPdf() {
 		.finally(cb)
 		.start();;
 	};
-	t.newPage = (opt)=> new pdfPage.add(t, opt);
+	t.newPage = (opt)=> pdfPage.add(t, opt);
+	
+	Object.defineProperty(t, 'cp', 
+		{ get: ()=> t.pages[t.pages.length-1] });
+
 	t.toBuffer = ()=> pdfWrite.write(t),
 	t.save = function(fname, cb) {
 		if(!path.isAbsolute(fname))

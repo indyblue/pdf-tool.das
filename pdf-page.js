@@ -1,3 +1,6 @@
+var promise = require('./promise.js');
+var round = promise.round;
+
 function objPage(po, style) {
 	var t = this;
 	t.pdf = po;
@@ -107,7 +110,7 @@ function objPage(po, style) {
 				newp.startText();
 			}
 			newp.setStyle(q.fid, q.fsize, q.flead, q.color, q.align);
-			console.log(q.y, q.ym, q.y0, po.pages.length, q.ptl);
+			//console.log(q.y, q.ym, q.y0, po.pages.length, q.ptl);
 			newp.cl = t.cl;
 			newp.nl();
 			t.stream += ' ET';
@@ -298,10 +301,4 @@ module.exports = {
 	add: (po, style)=> new objPage(po, style)
 };
 
-function round(x, n) {
-	var f = Math.pow(10,n)
-	var r = x*f;
-	var r2 = Math.round(r);
-	var r3 = r2/f;
-	return r3;
-}
+

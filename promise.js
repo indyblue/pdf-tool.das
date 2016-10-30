@@ -57,13 +57,24 @@ function fnExtend(){
 			var key = argKeys[j];
 			var val = arg[key];
 			var descr = Object.getOwnPropertyDescriptor(arg,key);
+			// allow getter/setter to be inherited
 			if(typeof descr.get!='undefined' || typeof descr.set!='undefined'){
 				var val = {enumerable:true,configurable:true};
 				if(typeof descr.get!='undefined') val.get = descr.get;
 				if(typeof descr.set!='undefined') val.set = descr.set;
-				Object.defineProperty(retval, key, val);
-			}
-			else retval[key] = val;
+				// don't inherit if there is already a getter/setter
+				var retDescr = Object.getOwnPropertyDescriptor(retval,key);
+				if(typeof retDescr.get=='undefined' && typeof retDescr.set=='undefined')
+					Object.defineProperty(retval, key, val);
+			} // recurse for objects (but not arrays)
+			else if(typeof val == 'object' && !Array.isArray(val)) {
+				if(typeof retval[key]=='undefined') retval[key] = {};
+				if(typeof retval[key]!='object') retval[key] = { value: retval[key] };
+				fnExtend(retval[key], val);
+			} // for arrays, make a copy of the whole array and use it 
+			else if(Array.isArray(val)) {
+				retval[key] = fnExtend([], val);
+			} else retval[key] = val;
 		}
 	}
 	return retval;

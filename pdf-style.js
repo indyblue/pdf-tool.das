@@ -14,12 +14,48 @@ function fnStyleDefault(obj) {
 		lead: 14,
 		color: '0 g', // '0 1 1 0 k' for red
 	};
-	var block = {};
+	var block = {
+		align: 'j', // left, right, center, justify
+		keepWithNext: false,
+		keepWithPrev: false,
+		keepTogether: false,
+		_tabs: [
+			{ position: 0, align: 'l' },
+			{ position: 'this.xw/2', align: 'c' },
+			{ position: 'this.xw', align: 'r' }
+		],
+		get xw() { return section.xw; },
+		get tabs() {
+			var ret = extend([],this._tabs);
+			var hasRR = false;
+			for(var i=ret.length-1;i>=0;i--){
+				var t = ret[i];
+				if(typeof t.align=='undefined') t.align='l';
+				var val = 0;
+				try{ val = eval(t.position); }
+				catch(e) {}
+				t.position = val;
+				if(t.position>this.xw) {
+					if(!hasRR && t.align=='r') {
+						t.position=this.xw;
+						hasRR=true;
+					}
+					else ret.splice(i,1);
+				}
+			}
+			return ret;
+		}
+	};
 	var section = {
 		columns: 1,
 		spacing: 0.25,
 		divider: '', // somehow we want to indicate color, width and style?
-		pText: [] // do we indicate parallel languages here?
+		pText: [], // do we indicate parallel languages here?
+		get xw() { 
+			var spaceAll = (this.columns-1)*this.spacing*page.pointsPerUnit;
+			var colWidth = (page.xw - spaceAll) / this.columns;
+			return colWidth;
+		}
 	};
 	var page = {
 		width: 8.5,
@@ -59,8 +95,10 @@ function fnStyleDefault(obj) {
 
 		get x0() { return this.getMargin(4) * this.pointsPerUnit; },
 		get xmax() { return (this.width - this.getMargin(2)) * this.pointsPerUnit; },
+		get xw() { return this.xmax - this.x0; },
 		get y0() { return (this.height - this.getMargin(1)) * this.pointsPerUnit; },
 		get ymin() { return this.getMargin(3) * this.pointsPerUnit; },
+		get yh() { return this.y0 - this.ymin; },
 		pointsPerUnit: 72,
 		set units(v) { // options: in, cm, mm, pt
 			if(/^cm$/i.test(v)) this.pointsPerUnit = ppc;
@@ -87,11 +125,30 @@ function fnStyleDefault(obj) {
 	return style;
 }
 
-var defBrev = {
+var defQlegal = {
 	font: { size: 8, lead: 9 },
-	section: { columns: 2, 
+	section: { 
+		columns: 2 
+	},
+	block: {
+		align: 'j', // left, right, center, justify
+		_tabs: [
+			{ position: 0, align: 'l' },
+			{ position: 'this.xw', align: 'r' }
+		]
+	},
+	page: {
+		width: 4.25,
+		height: 7,
+		margin: .25,
+		gutter: 0.1,
+		num: 1,
+		numPrefix: 'P',
+		numSuffix: '*'
+	}
+};
 
 module.exports = {
-	default: (o) => new fnStyleDefault(o),
-	brev: (o) => extend(new fnStyleDefault, defBrev, o)
+	letter: (o) => new fnStyleDefault(o),
+	qlegal: (o) => extend(new fnStyleDefault(), defQlegal, o)
 };

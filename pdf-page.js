@@ -2,13 +2,16 @@ var promise = require('./promise.js');
 var round = promise.round;
 
 function objPage(po, style) {
-	var t = this;
+	var q = {}; //hidden properties
+	var t = this; //visible properties
 	t.pdf = po;
-	t.width = 4.25;
-	t.height = 7;
-	t.margin = 0.25;
-	t.dpi = 72;
+	q.style = style;
 	t.stream = '';
+
+	t.lines = [];
+	t.words = [];
+	t.fstyle = [ style.font ];
+	
 
 	t.writePage = function(op, parRef, strRef) {
 		op.add(op.omake(),
@@ -50,7 +53,6 @@ function objPage(po, style) {
 	};
 	t.style = () => ' /F'+t.fid+' '+t.fsize+' Tf '+t.flead+' TL '+t.color+' ';
 	
-	var q = {};
 	q.x0 = t.margin * t.dpi;
 	q.y0 = (t.height-t.margin) * t.dpi;
 	q.x = q.x0;
@@ -252,9 +254,6 @@ function objLine(pg) {
  /*
  	a line consists of an array of word objects, which consist of:
 		[ word-width, is-space, word-text, word-u16-text]
-	rules:
-		if a BT is needed, it should be included in the first character.
-		TJ blocks...all spaces should be open-ended TJ blocks, so that space adjustments can be made
  */
 	var t = this;
 	t.page = pg;

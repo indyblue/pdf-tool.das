@@ -1,0 +1,17 @@
+what is the appropriate interaction between style and page objects?
+
+- begin a new page, apply style. page style becomes read-only.
+- section style becomes settable only via method, which will:
+	- write previous section to page stream in its entirety
+	- this way changing number of columns will write old column set.
+- adding new text:
+	- use section.xw for width, to build lines
+	- lines go into an array of objs
+	- if the lines have a stay together imperative, 
+		they get added to the same array entry.
+- line array:
+	- {h, text}
+	- these can have multiple lines, if the lines are to stay together
+	- the text should contain:
+		- all text settings, TJ, and TDs
+

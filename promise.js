@@ -43,7 +43,8 @@ module.exports = {
 	new: () => new fno(),
 	extend: fnExtend,
 	round: fnRound,
-	getValue: fnGetValue
+	getValue: fnGetValue,
+	addPropGS: fnAddPropGetSet
 };
 
 function fnExtend(){
@@ -59,13 +60,11 @@ function fnExtend(){
 			var descr = Object.getOwnPropertyDescriptor(arg,key);
 			// allow getter/setter to be inherited
 			if(typeof descr.get!='undefined' || typeof descr.set!='undefined'){
-				var val = {enumerable:true,configurable:true};
-				if(typeof descr.get!='undefined') val.get = descr.get;
-				if(typeof descr.set!='undefined') val.set = descr.set;
 				// don't inherit if there is already a getter/setter
 				var retDescr = Object.getOwnPropertyDescriptor(retval,key);
-				if(typeof retDescr.get=='undefined' && typeof retDescr.set=='undefined')
-					Object.defineProperty(retval, key, val);
+				if(typeof retDescr!='undefined' 
+					&& typeof retDescr.get=='undefined' && typeof retDescr.set=='undefined')
+					fnAddPropGetSet(retval, key, descr.get, descr.set);
 			} // recurse for objects (but not arrays)
 			else if(typeof val == 'object' && !Array.isArray(val)) {
 				if(typeof retval[key]=='undefined') retval[key] = {};
@@ -80,6 +79,13 @@ function fnExtend(){
 	return retval;
 }
 
+function fnAddPropGetSet(obj, key, fnGet, fnSet){
+	var val = {enumerable:true,configurable:true};
+	if(typeof fnGet=='function') val.get = fnGet;
+	if(typeof fnSet=='function') val.set = fnSet;
+	Object.defineProperty(obj, key, val);
+}
+
 
 function fnRound(x, n) {
 	var f = Math.pow(10,n)
@@ -91,9 +97,21 @@ function fnRound(x, n) {
 
 function fnGetValue(obj, key, def) {
 	if(typeof obj!=='object') return def;
-	if(typeof obj[key]!== 'undefined')
-		return obj[key];
-	else return def;
-
+	var retval = def;
+	if(Array.isArray(key)) {
+		var nxtObj = obj;
+		var fail = false;
+		for(var i=0;i<key.length;i++){
+			var iKey = key[i];
+			if(typeof nxtObj[iKey]!='undefined')
+				nxtObj = nxtObj[iKey];
+			else {
+				fail = true;
+				break;
+			}
+		}
+		if(!fail) retval = nxtObj;
+	} else if(typeof obj[key]!== 'undefined')
+		retval = obj[key];
+	return retval;
 }
-

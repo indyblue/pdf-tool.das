@@ -1,44 +1,65 @@
 var promise = require('./promise.js');
 var round = promise.round;
+var extend = promise.extend;
+var addPropGS = promise.addPropGS;
+var getValue = promise.getValue;
 
-function objPage(po, style) {
-	var q = {}; //hidden properties
-	var t = this; //visible properties
-	t.pdf = po;
-	q.style = style;
+function objPage(options) {
+	var t = this;
 	t.stream = '';
-
-	t.lines = [];
-	t.words = [];
-	t.fstyle = [ style.font ];
-	
+	t.width = 0;
+	t.height = 0;
 
 	t.writePage = function(op, parRef, strRef) {
 		op.add(op.omake(),
 			' << /Type/Page',
 			'  /Parent '+parRef+' 0 R',
 			'  /Contents '+strRef+' 0 R',
-			'  /MediaBox [0 0 '+(t.width*t.dpi)+' '+(t.height*t.dpi)+']',
+			'  /MediaBox [0 0 '+(t.width)+' '+(t.height)+']',
 			' >>','endobj');
 	};
 	t.writeStream = function() {
 		return t.stream;
 	};
+}
 
-	t.fid = 1;
-	t.fsize = 12;
-	t.flead = 14;
-	t.color = '0 g'; // '0 1 1 0 k' for red
-	t.align = 'j';
-	var setprop = function(key, val) {
-		//console.log(t[key], key, val);
-		if(typeof val != 'undefined' && val!=null)
-			t[key] = val;
-		//console.log(t[key], key, val);
-	};
-	t.setStyle = function(fid, fsize, flead, color, align) {
-		setprop('fid', fid);
-		setprop('fsize', fsize);
+function objPageTool(po, style) {
+	var q = {}; //hidden properties
+	var t = this; //visible properties
+	t.pdf = po;
+
+	//t.fstring = () => ' /F'+t.fstyle().fid+' '+t.fsize()+' Tf '
+	//	+t.fstyle().flead+' TL '+t.fstyle().color+' ';
+	//t.stream = {};
+
+	//**************************************************************************
+	// STYLE STORAGE, GETTING, AND MANIPULATION
+	//**************************************************************************
+	q.basestyle = style;
+	q.stylestack = [];
+	addPropGS(t, 'style', function() {
+		var props = [{}, q.basestyle];
+		[].push.apply(props, q.stylestack);
+		var style = extend.apply(null, props);
+		return style;
+	});
+	addPropGS(t, 'font', function() {
+		var style = t.style;
+		var fid = style.font.fid;
+		var font = t.pdf.fonts[fid];
+		return font;
+	});
+
+
+	t.setStyle = function(style) {
+		if(typeof style=='string' && typeof t.pdf.styles[style]=='object'){
+			// get actual style from defaults
+		}
+		// if setting a page, block or section style, finish old and start new
+		// add style to stack
+
+		// do we want to mess with this calculated lead stuff?
+		/*
 		var rxlead = /^(\d+)%$/;
 		if(rxlead.test(flead)) {
 			var lead = rxlead.exec(flead)[1] / 100;
@@ -46,20 +67,48 @@ function objPage(po, style) {
 			flead = t.fsize * lead * font.metric.capheight / font.metric.unitsPerEm;
 			//console.log(t.fsize, lead, font.metric.capheight , font.metric.unitsPerEm, flead);
 		}
-		setprop('flead', flead);
-		setprop('color', color);
-		setprop('align', align);
+		*/
+		// write new font style to current line buffer (cl)
 		t.cl += '] TJ '+t.style()+' [';
 	};
-	t.style = () => ' /F'+t.fid+' '+t.fsize+' Tf '+t.flead+' TL '+t.color+' ';
+	//**************************************************************************
 	
-	q.x0 = t.margin * t.dpi;
-	q.y0 = (t.height-t.margin) * t.dpi;
-	q.x = q.x0;
-	q.y = q.y0;
-	q.ym = q.x0;
-	q.xm = (t.width - t.margin) * t.dpi;
-	var line = new objLine(t);
+	//**************************************************************************
+	// BASIC CHARACTER/WORD CONVERSIONS
+	//**************************************************************************
+	t.parseWord = function(word) {
+		var width = 0;
+		var txt = ' (';
+		for(var i=0;i<word.length;i++){
+			var aw = q.chrWidth(word[i], word[i+1]);
+			width += (aw[0] + aw[1]) * aw[2];
+			//console.log('aw',aw);
+			var ule = new Buffer(word[i], 'utf16le');
+			var ube = Buffer.alloc(ule.length);
+			for(var j=0;j<ule.length;j++){
+				ube[j] = ule[ule.length-j-1];
+			}
+			txt += ube.toString('binary');
+			if(aw[1]!=0) txt+= ') '+(0-aw[1])+' (';
+		}
+		txt += ') ';
+		return [width, txt, word];
+	};
+
+	q.chrWidth = function(chr, chr1) {
+		var code = chr.charCodeAt();
+		var code1 = 0;
+		if(typeof chr1 != 'undefined') code1 = chr1.charCodeAt();
+		var font = t.font;
+		var factor = t.style.font.fsize / font.metric.unitsPerEm;
+		var chrw = font.cw[code];
+		if(typeof chrw == 'undefined') chrw = font.metric.missingWidth;
+		var chrk = getValue(font.kern, [code, code1], 0);
+		return [chrw, chrk, factor];
+	};
+	//**************************************************************************
+
+	// DAS edit marker
 	t.box = function() {
 		return ' '+q.x0+' '+q.x0+' '
 			+((t.width-2*t.margin)*t.dpi)+' '
@@ -89,14 +138,15 @@ function objPage(po, style) {
 
 		var adj = 0;
 		var open = ' 0 -'+t.flead+' TD [ ';
+		var fsize = t.style.font.fsize;
 		if(t.align=='j' && isAuto) {
 			//var  num = q.spaces(t.cl);
-			adj = -round((q.xm - q.x) * 1000 /t.fsize, 2);
+			adj = -round((q.xm - q.x) * 1000 /fsize, 2);
 			adj = q.spaces(t.cl, adj);
 			if(adj<-1000) adj=0;
 		} else if(t.align=='c') {
 			cadj = -round((q.xm - q.x) * 1000 / 2, 2);
-			open = ' 0 -'+t.flead+' TD /F'+t.fid+' 1 Tf ['+cadj+'] TJ /F'+t.fid+' '+t.fsize+' Tf [ ';
+			open = ' 0 -'+t.flead+' TD /F'+t.fid+' 1 Tf ['+cadj+'] TJ /F'+t.fid+' '+ fsize+' Tf [ ';
 			//console.log(q.x, q.xm, (q.xm-q.x)/2, cadj, open);
 			//open = '['+cadj;
 		}
@@ -104,14 +154,9 @@ function objPage(po, style) {
 
 		q.y -= t.flead;
 		if(q.y<q.ym) {
-			//*
+			/* we need to write the current stream etc into the pdf.pages array, then reset them
+
 			var newp = null;
-			if(t!=po.cp) newp = po.cp;
-			else {
-				newp = po.newPage(po, null);
-				newp.startText();
-			}
-			newp.setStyle(q.fid, q.fsize, q.flead, q.color, q.align);
 			//console.log(q.y, q.ym, q.y0, po.pages.length, q.ptl);
 			newp.cl = t.cl;
 			newp.nl();
@@ -146,7 +191,6 @@ function objPage(po, style) {
 		if(isBlock) t.nl();
 	};
 
-	po.pages.push(t);
 	return t;
 }
 
@@ -250,54 +294,8 @@ function objPage(po, style) {
 
 */
 
-function objLine(pg) {
- /*
- 	a line consists of an array of word objects, which consist of:
-		[ word-width, is-space, word-text, word-u16-text]
- */
-	var t = this;
-	t.page = pg;
-
-	t.parseWord = function(word) {
-		var width = 0;
-		var txt = ' (';
-		for(var i=0;i<word.length;i++){
-			var aw = t.chrWidth(word[i], word[i+1]);
-			width += (aw[0] + aw[1]) * aw[2];
-			//console.log('aw',aw);
-			var ule = new Buffer(word[i], 'utf16le');
-			var ube = Buffer.alloc(ule.length);
-			for(var j=0;j<ule.length;j++){
-				ube[j] = ule[ule.length-j-1];
-			}
-			txt += ube.toString('binary');
-			if(aw[1]!=0) txt+= ')'+(0-aw[1])+'(';
-		}
-		txt += ') ';
-		return [width, txt, word];
-	};
-
-	t.chrWidth = function(chr, chr1) {
-		var code = chr.charCodeAt();
-		var code1 = 0;
-		if(typeof chr1 != 'undefined') code1 = chr1.charCodeAt();
-		var font = pg.pdf.fonts[pg.fid-1];
-		var factor = pg.fsize /1000.; //font.metric.capheight / font.metric.unitsPerEm;
-		//console.log(pg.fsize, font.metric.capheight, font.metric.unitsPerEm);
-		var chrw = font.cw[code];
-		if(typeof chrw == 'undefined') chrw = font.metric.missingWidth;
-		var chrk = 0;
-		if(typeof font.kern != 'undefined'
-			&& typeof font.kern[code] != 'undefined'
-			&& typeof font.kern[code][code1] != 'undefined')
-			chrk = font.kern[code][code1];
-		return [chrw, chrk, factor];
-	};
-	
-}
-
 module.exports = {
-	add: (po, style)=> new objPage(po, style)
+	add: (po, style)=> new objPageTool(po, style)
 };
 
 

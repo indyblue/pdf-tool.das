@@ -5,6 +5,8 @@ var ttf = require('./ttf_parse.js');
 
 var pdfWrite = require('./pdf-write.js');
 var pdfPage = require('./pdf-page.js');
+var pdfStyle = require('./pdf-style.js');
+var addPropGS = promise.addPropGS;
 
 function fnPdf() {
 	var t = this;
@@ -29,6 +31,7 @@ function fnPdf() {
 	t.reset = function() {
 		t.pages = [];
 		t.fonts = [];
+		t.styles = {};
 		t.colors = [];
 		t.cidinit = '';
 	};
@@ -38,6 +41,22 @@ function fnPdf() {
 		var pr = promise.new();
 		if(Array.isArray(options.fonts))
 			pr.next(()=> { initFonts(options.fonts, t.fonts, pr.trigger) });
+		t.styles.default = pdfStyle.letter();
+		if(typeof options.styles=='object') pr.next(()=>{
+			for(var key in options.styles){
+				var val = options.styles[key];
+				if(typeof val == 'string' && typeof pdfStyle[val]=='function')
+					val = pdfStyle[val]();
+				if(typeof t.styles[key]!=='object') t.styles[key]={};
+				promise.extend(t.styles[key],val);
+			}
+			pr.trigger();
+		});
+		else t.styles['default'] = pdfStyle['letter'];
+		pr.next(()=> {
+			t.page = pdfPage.add(t, t.styles['default']);
+			pr.trigger();
+		});
 		pr.next(()=> {
 			var fn = path.join(__dirname, 'ttf_cidinit.txt');
 			fs.readFile(fn, (err, data)=> {
@@ -50,11 +69,7 @@ function fnPdf() {
 		.finally(cb)
 		.start();;
 	};
-	t.newPage = (opt)=> pdfPage.add(t, opt);
 	
-	Object.defineProperty(t, 'cp', 
-		{ get: ()=> t.pages[t.pages.length-1] });
-
 	t.toBuffer = ()=> pdfWrite.write(t),
 	t.save = function(fname, cb) {
 		if(!path.isAbsolute(fname))

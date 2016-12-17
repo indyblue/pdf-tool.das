@@ -19,6 +19,8 @@ function fnStyleDefault(obj) {
 		keepWithNext: false,
 		keepWithPrev: false,
 		keepTogether: false,
+		margin: [0,0,0,0], // top, right, bottom, left
+		firstLineIndent: 0,
 		_tabs: [
 			{ position: 0, align: 'l' },
 			{ position: 'this.xw/2', align: 'c' },

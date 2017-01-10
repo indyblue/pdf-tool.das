@@ -1,3 +1,4 @@
+var pdfStyle = require('./pdf-style.js');
 var promise = require('./promise.js');
 var round = promise.round;
 var extend = promise.extend;
@@ -7,15 +8,18 @@ var getValue = promise.getValue;
 function objPage(options) {
 	var t = this;
 	t.stream = '';
-	t.width = 0;
-	t.height = 0;
+	//promise.debug=true;
+	extend(t, options);
+	//promise.debug=false;
+	t.curX = t.x0;
+	t.curY = t.y0;
 
 	t.writePage = function(op, parRef, strRef) {
 		op.add(op.omake(),
 			' << /Type/Page',
 			'  /Parent '+parRef+' 0 R',
 			'  /Contents '+strRef+' 0 R',
-			'  /MediaBox [0 0 '+(t.width)+' '+(t.height)+']',
+			'  /MediaBox [0 0 '+(t.ptwidth)+' '+(t.ptheight)+']',
 			' >>','endobj');
 	};
 	t.writeStream = function() {
@@ -36,9 +40,14 @@ function objPageTool(po, style) {
 	// STYLE STORAGE, GETTING, AND MANIPULATION
 	//**************************************************************************
 	q.basestyle = style;
+	q.incpage = function() {
+		q.basestyle.page.num++;
+	};
 	q.stylestack = [];
+
+	var newdefstyle = pdfStyle.letter();
 	addPropGS(t, 'style', function() {
-		var props = [{}, q.basestyle];
+		var props = [newdefstyle, q.basestyle];
 		[].push.apply(props, q.stylestack);
 		var style = extend.apply(null, props);
 		return style;
@@ -46,18 +55,25 @@ function objPageTool(po, style) {
 	addPropGS(t, 'font', function() {
 		var style = t.style;
 		var fid = style.font.fid;
-		var font = t.pdf.fonts[fid];
+		var font = t.pdf.fonts[fid-1];
 		return font;
 	});
 
+	q.fStyle = () => {
+		var f = t.style.font;
+		return ' /F'+f.fid+' '+f.size+' Tf '+f.lead+' TL '+f.color+' ';
+	};
+	t.popStyle = function() {
+		if(q.stylestack.length>0) q.stylestack.pop();
+	};
+	t.pushStyle = function(style) {
+		if(typeof style=='string' && typeof t.pdf.styles[style]=='object')
+			q.stylestack.push(t.pdf.styles[style]);
+		else if(typeof style=='object')
+			q.stylestack.push(style);
 
-	t.setStyle = function(style) {
-		if(typeof style=='string' && typeof t.pdf.styles[style]=='object'){
-			// get actual style from defaults
-		}
 		// if setting a page, block or section style, finish old and start new
 		// add style to stack
-
 		// do we want to mess with this calculated lead stuff?
 		/*
 		var rxlead = /^(\d+)%$/;
@@ -68,11 +84,9 @@ function objPageTool(po, style) {
 			//console.log(t.fsize, lead, font.metric.capheight , font.metric.unitsPerEm, flead);
 		}
 		*/
-		// write new font style to current line buffer (cl)
-		t.cl += '] TJ '+t.style()+' [';
 	};
 	//**************************************************************************
-	
+
 	//**************************************************************************
 	// BASIC CHARACTER/WORD CONVERSIONS
 	//**************************************************************************
@@ -100,7 +114,7 @@ function objPageTool(po, style) {
 		var code1 = 0;
 		if(typeof chr1 != 'undefined') code1 = chr1.charCodeAt();
 		var font = t.font;
-		var factor = t.style.font.fsize / font.metric.unitsPerEm;
+		var factor = t.style.font.size / font.metric.unitsPerEm;
 		var chrw = font.cw[code];
 		if(typeof chrw == 'undefined') chrw = font.metric.missingWidth;
 		var chrk = getValue(font.kern, [code, code1], 0);
@@ -108,89 +122,138 @@ function objPageTool(po, style) {
 	};
 	//**************************************************************************
 
-	// DAS edit marker
-	t.box = function() {
-		return ' '+q.x0+' '+q.x0+' '
-			+((t.width-2*t.margin)*t.dpi)+' '
-			+((t.height-2*t.margin)*t.dpi)+' re s ';
-	};
-	t.startText = function() {
-		t.stream += '\n BT '+t.style()+' '+q.x0+' '+q.y0+' Td ';
-	};
-	t.endText = function() {
-		t.nl();
-		t.stream += ' ET';
-	};
-	t.cl = '';
-	q.ptl = '';
-	q.spaces = function(txt, adj) {
-		var matches = txt.match(/s0s/g);
-		var len = 0;
-		if(Array.isArray(matches)) 
-			len = matches.length;
-		if(typeof adj == 'undefined')
-			return len;
-		else 
-			return adj/len;
-	};
-	t.nl = function(isAuto) {
-		if(typeof isAuto=='undefined') isAuto = false;
-
-		var adj = 0;
-		var open = ' 0 -'+t.flead+' TD [ ';
-		var fsize = t.style.font.fsize;
-		if(t.align=='j' && isAuto) {
-			//var  num = q.spaces(t.cl);
-			adj = -round((q.xm - q.x) * 1000 /fsize, 2);
-			adj = q.spaces(t.cl, adj);
-			if(adj<-1000) adj=0;
-		} else if(t.align=='c') {
-			cadj = -round((q.xm - q.x) * 1000 / 2, 2);
-			open = ' 0 -'+t.flead+' TD /F'+t.fid+' 1 Tf ['+cadj+'] TJ /F'+t.fid+' '+ fsize+' Tf [ ';
-			//console.log(q.x, q.xm, (q.xm-q.x)/2, cadj, open);
-			//open = '['+cadj;
+	//**************************************************************************
+	// BASIC LINE MANIPULATION
+	//**************************************************************************
+	q.lineBuffer = [];
+	q.flushLine = function() {
+		if(typeof q.curLine == 'object' && typeof q.curLine.txt=='string'
+			&& q.curLine.txt.length>0) {
+			q.curLine.txt+= ' ] TJ ';
+			q.lineBuffer.push(q.curLine);
+			//console.log('=',q.curLine.ctxt, q.curLine.lead);
 		}
-		t.cl = t.cl.replace(/s0s/g, adj);
-
-		q.y -= t.flead;
-		if(q.y<q.ym) {
-			/* we need to write the current stream etc into the pdf.pages array, then reset them
-
-			var newp = null;
-			//console.log(q.y, q.ym, q.y0, po.pages.length, q.ptl);
-			newp.cl = t.cl;
-			newp.nl();
-			t.stream += ' ET';
-			// */
-		} else {
-			//console.log(q.ptl);
-			t.stream += '\n% '+q.ptl +'\n';
-			t.stream += open + t.cl + '] TJ \n';
-		}
-		t.cl = '';
-		q.ptl = '';
-		q.x = q.x0;
-		//t.addText(Math.round(q.y) + ' '+q.y0+'/'+q.ym+' ');
-	};
-	t.addText = function(txt, isBlock) {
-		var sp = line.parseWord(' ');
-		var awords = txt.split(/\s+/);
-		for(var i=0;i<awords.length;i++){
-			var aw = line.parseWord(awords[i]);
-			if(q.x+sp[0]+aw[0]>q.xm) t.nl(true);
-			if(q.x>q.x0) {
-				t.cl += sp[1] + ' s0s ';
-				q.ptl += sp[2];
-				q.x += sp[0];
-			}
-			//console.log(aw);
-			t.cl += aw[1];
-			q.ptl += aw[2];
-			q.x += aw[0];
+		q.curLine = {
+			txt: q.fStyle()+' [ ',
+			ctxt:'',
+			lead:0,
+			height:0,
+			kwn:false,
+			x:0,
+			w:t.style.block.xw
 		};
-		if(isBlock) t.nl();
+	};
+	q.writeToLine = function(txt) {
+		var l = q.curLine;
+		l.txt += txt[1];
+		l.ctxt += txt[2];
+		l.x+= txt[0];
+		if(l.lead<t.style.font.lead) l.lead=t.style.font.lead;
+		l.height = l.lead;
 	};
 
+	q.flushLine();
+	q.space = t.parseWord(' ');
+	q.dash = t.parseWord('-');
+	//console.log(q.space, q.dash);
+	t.parseLine = function(string, flush) {
+		if(typeof flush!='number') flush = 1;
+		if(flush>1) q.flushLine(); // not sure if we always want to do this or not...
+		
+		// write new font style to current line buffer (cl)
+		q.curLine.txt += '] TJ '+q.fStyle()+' [';
+
+		string.replace(/([ \t\n\u00AD]+|^)([^ \t\n\u00AD]*)(?=[ \t\n\u00AD]|$)/g, function(){
+			var brkChr = arguments[1];
+			var txt = arguments[2];
+			var nextBrk = arguments[4].substr(arguments[3]+arguments[0].length,1).charCodeAt(0) || 0;
+			//console.log(brkChr, txt, arguments[3], arguments[0].length, nextBrk);
+			/* procedure:
+					- what do we do about multiple brkChrs?
+					- get length of fragment, will it fit?
+					- if not, break line. if yes, add it.
+					- but if the brkChr is 173 and it won't fit, we need to add a dash to EOL.
+					- and if the nextBrk is 173 and a dash won't fit after, we can't use the section.
+			*/
+			//console.log(arguments);
+			q.fitCheck(txt, brkChr, nextBrk==173);
+		});
+		if(flush>0) q.flushLine(); // not sure if we always want to do this or not...
+	};
+	q.fitCheck = function(txt, brkChr, postShy) {
+		var l = q.curLine;
+		var xrem = l.w-l.x;
+		bcode = brkChr.charCodeAt(0) || 0;
+		var chunk = t.parseWord(txt);
+		if(bcode!=173 && !(bcode==32 && l.x==0)) var bChunk = t.parseWord(brkChr);
+		else { 
+			var bChunk = t.parseWord('');
+			//console.log('blank');
+		}
+		xrem -= bChunk[0];
+		xrem -= chunk[0];
+		if((postShy && xrem < q.dash[0])
+			||(!postShy && xrem < 0)) { 
+			var crap = l.x; // what if we have a single word that is too long for line. what do we do then???
+			if(bcode==173) q.writeToLine(q.dash);
+			q.flushLine();
+			if(crap!=0) q.fitCheck(txt, brkChr, postShy);
+			return;
+		}
+		// we have enough space to use word fragment!
+		//console.log(txt, bChunk);
+		q.writeToLine(bChunk);
+		q.writeToLine(chunk);
+		//console.log(l.ctxt, bChunk, chunk);
+		//console.log(l);
+	};
+	//**************************************************************************
+
+	//**************************************************************************
+	// BORDER
+	//**************************************************************************
+	q.box = function() {
+		var s = t.style.page;
+		var b = ' .5 0 .5 0 K .1 w '+s.x0+' '+s.ymin+' '+s.xw+' '+s.yh+' re s ';
+		//console.log(b);
+		return b;
+	};
+
+
+	//**************************************************************************
+	//**************************************************************************
+	// PAGE MANIPULATION
+	//**************************************************************************
+	t.endPage = function() {
+		if(typeof q.curPage == 'object') {
+			q.curPage.stream+='\n ET ';
+			t.pdf.pages.push(q.curPage);
+			q.incpage();
+		}
+		q.curPage = new objPage(t.style.page);
+		var cp = q.curPage;
+		q.curPage.stream = q.box();
+		var pn = t.parseWord('['+cp.num+']');
+		//console.log(cp.num, pn);
+		cp.stream += '\n BT '+cp.curX+' '+cp.curY+' Td '+q.fStyle()+' ['+pn[1]+'] TJ ';
+	};
+	t.endPage();
+	t.flushPage = function() {
+		var cp = q.curPage;
+		for(var i=0;i<q.lineBuffer.length;i++){
+			var l = q.lineBuffer[i];
+			if(cp.ymin>=cp.curY-l.height) {
+				t.endPage();
+				cp=q.curPage;
+			}
+			cp.curY-= l.lead;
+			//console.log('=',l.ctxt, cp.curY);
+			cp.stream += '\n% ' + l.ctxt
+				+ '\n 0 '+(0-l.lead)+' TD ' + l.txt;
+		}
+		cp.stream+='\n ET ';
+	}
+	//**************************************************************************
 	return t;
 }
 

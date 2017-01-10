@@ -44,7 +44,8 @@ module.exports = {
 	extend: fnExtend,
 	round: fnRound,
 	getValue: fnGetValue,
-	addPropGS: fnAddPropGetSet
+	addPropGS: fnAddPropGetSet,
+	debug: false
 };
 
 function fnExtend(){
@@ -62,8 +63,9 @@ function fnExtend(){
 			if(typeof descr.get!='undefined' || typeof descr.set!='undefined'){
 				// don't inherit if there is already a getter/setter
 				var retDescr = Object.getOwnPropertyDescriptor(retval,key);
-				if(typeof retDescr!='undefined' 
-					&& typeof retDescr.get=='undefined' && typeof retDescr.set=='undefined')
+				if(module.exports.debug) console.log('rd', retDescr);
+				if(typeof retDescr=='undefined' ||
+					(typeof retDescr.get=='undefined' && typeof retDescr.set=='undefined'))
 					fnAddPropGetSet(retval, key, descr.get, descr.set);
 			} // recurse for objects (but not arrays)
 			else if(typeof val == 'object' && !Array.isArray(val)) {

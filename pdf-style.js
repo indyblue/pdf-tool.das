@@ -95,6 +95,8 @@ function fnStyleDefault(obj) {
 			return ret;
 		},
 
+		get ptwidth() { return this.width * this.pointsPerUnit; },
+		get ptheight() { return this.height * this.pointsPerUnit; },
 		get x0() { return this.getMargin(4) * this.pointsPerUnit; },
 		get xmax() { return (this.width - this.getMargin(2)) * this.pointsPerUnit; },
 		get xw() { return this.xmax - this.x0; },

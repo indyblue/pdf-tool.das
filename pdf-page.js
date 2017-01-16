@@ -45,8 +45,8 @@ function objPageTool(po, style) {
 	};
 	q.stylestack = [];
 
-	var newdefstyle = pdfStyle.letter();
 	addPropGS(t, 'style', function() {
+		var newdefstyle = pdfStyle.letter();
 		var props = [newdefstyle, q.basestyle];
 		[].push.apply(props, q.stylestack);
 		var style = extend.apply(null, props);
@@ -92,33 +92,117 @@ function objPageTool(po, style) {
 	//**************************************************************************
 	t.parseWord = function(word) {
 		var width = 0;
+		var code0 = 0;
+		var karr=[];
 		var txt = ' (';
 		for(var i=0;i<word.length;i++){
 			var aw = q.chrWidth(word[i], word[i+1]);
-			width += (aw[0] + aw[1]) * aw[2];
+			if(i==0) code0 = aw.code;
+			karr = aw.karr;
+			width += (aw.width + aw.kern) * aw.factor;
 			//console.log('aw',aw);
-			var ule = new Buffer(word[i], 'utf16le');
-			var ube = Buffer.alloc(ule.length);
-			for(var j=0;j<ule.length;j++){
-				ube[j] = ule[ule.length-j-1];
-			}
-			txt += ube.toString('binary');
-			if(aw[1]!=0) txt+= ') '+(0-aw[1])+' (';
+			var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+			txt += aw.chr16be;
+			if(aw.code==32) txt+= ') '+q.mkJustify(1)+' (';
+			else if(aw.code==9) txt+= ') '+q.mkJustify(10)+' (';
+			else if(aw.kern!=0) txt+= ') '+(0-aw.kern)+' (';
 		}
 		txt += ') ';
-		return [width, txt, word];
+		return {width: width, txt: txt, ctxt: word, code0: code0, karr: karr };
+	};
+	
+	q.mkLineInit = function(ln) {
+		ln = ln||'';
+		var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+		return ' <a{'+ln+':'+fontf+'}> ';
+	};
+	q.rxLineInit = /<a{(\d*):([\d.]+)}>/g;
+	q.mkJustify = function(elastic, ln) {
+		ln = ln||'';
+		elastic = elastic||1;
+		var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+		return ' <'+ln+'{'+elastic+':'+fontf+'}> ';
+	};
+	q.rxJustify = /(<)(\d*)({(\d+):([\d.]+)}>)/g;
+	q.alignLineNum = function(l) {
+		l.txt = l.txt.replace(q.rxJustify, function(m, ls, ln, le, i, u) {
+			if(ln=='') return ls+l.xarr.length+le;
+			else return m;
+		});
+		l.xarr.push(l.x);
+	};
+	q.align = function(l, type) {
+		type = (type||'l').toLowerCase();
+		l.ctxt += ' (a:'+type+')';
+		if(type=='j') q.alignJ(l);
+		else {
+			var rx = q.rxJustify;
+			l.txt = l.txt.replace(q.rxJustify, '');
+			l.txt = l.txt.replace(q.rxLineInit,function(m, ln, u) {
+				var upe = parseFloat(u)||1;
+				var sp = (l.w - (l.xarr[ln]||l.x)) * upe;
+				if(type=='r') return -sp;
+				else if(type=='c') return -sp/2;
+				else return '';
+			});
+		}
+	};
+	q.alignJ = function(l) {
+		l.txt = l.txt.replace(q.rxLineInit,'');
+		var rx = q.rxJustify;
+		var txt = l.txt;
+		var ttl = {};
+		var z1 = []
+		// need to get ttl before we can determine what spacing breakdown is
+		txt.replace(rx, function(m, ls, ln, le, i, u) {
+			ttl[ln] = (ttl[ln]||0) + (parseInt(i) || 0);
+			z1.push(i);
+		});
+		l.txt = txt.replace(rx, function(m, ls, ln, le, i, u) {
+			var s = parseInt(i)||0;
+			var upe = parseFloat(u)||1;
+			var s2 = s/ttl[ln] * (l.w - (l.xarr[ln]||l.x)) * upe;
+			return -s2;
+		});
+		// include info in comment text, for debugging purposes mostly
+		l.ctxt += ' (w:'+l.w
+			+', x:'+l.x
+			+', xarr:'+JSON.stringify(l.xarr)
+			+', ttl:'+JSON.stringify(ttl)
+			+')';
 	};
 
 	q.chrWidth = function(chr, chr1) {
 		var code = chr.charCodeAt();
+		var wcode = code;
+		if(code==9) {
+			chr = ' ';
+			code=32;
+		}
 		var code1 = 0;
 		if(typeof chr1 != 'undefined') code1 = chr1.charCodeAt();
 		var font = t.font;
 		var factor = t.style.font.size / font.metric.unitsPerEm;
 		var chrw = font.cw[code];
 		if(typeof chrw == 'undefined') chrw = font.metric.missingWidth;
+		var karr = [];
+		if(code1 ==0) karr = getValue(font.kern, [code], []);
 		var chrk = getValue(font.kern, [code, code1], 0);
-		return [chrw, chrk, factor];
+
+		var ule = new Buffer(chr, 'utf16le');
+		var ube = Buffer.alloc(ule.length);
+		for(var j=0;j<ule.length;j++){
+			ube[j] = ule[ule.length-j-1];
+		}
+		var chr16be = ube.toString('binary');
+		
+		return {width: chrw, 
+			kern: chrk, 
+			factor: factor, 
+			karr: karr, 
+			code: wcode,
+			chr: chr,
+			chr16be: chr16be };
 	};
 	//**************************************************************************
 
@@ -126,30 +210,80 @@ function objPageTool(po, style) {
 	// BASIC LINE MANIPULATION
 	//**************************************************************************
 	q.lineBuffer = [];
-	q.flushLine = function() {
-		if(typeof q.curLine == 'object' && typeof q.curLine.txt=='string'
-			&& q.curLine.txt.length>0) {
-			q.curLine.txt+= ' ] TJ ';
-			q.lineBuffer.push(q.curLine);
-			//console.log('=',q.curLine.ctxt, q.curLine.lead);
+	q.flushLine = function(force) {
+		if(typeof force=='undefined') force=0;
+		var runnext=1;
+		if(typeof q.curLine=='object' && q.curLine.d.a==1) {
+			
+			// if it's a drop line...keep dropping until it's full.
+			if(q.curLine.d.y==0) {
+				//console.log('0', q.curLine.d, q.curLine.ctxt);
+				q.moveInLine(q.curLine.d.w, q.curLine.d.h-t.style.font.lead);
+				q.curLine.d.y+=t.style.font.lead;
+				//q.curLine.xarr.push(q.curLine.x);
+				q.curLine.x = q.curLine.d.w;
+				runnext=0;
+			} else if(q.curLine.d.y<q.curLine.d.h) {
+				//console.log('1', q.curLine.d, q.curLine.ctxt);
+				q.moveInLine(0, -t.style.font.lead);
+				q.curLine.d.y+=t.style.font.lead;
+				q.alignLineNum(q.curLine);
+				q.curLine.x = q.curLine.d.w;
+				runnext=0;
+			} else {
+				//console.log('2', q.curLine.d, q.curLine.ctxt);
+				//console.log(q.curLine.txt);
+				q.alignLineNum(q.curLine);
+				q.moveInLine(-q.curLine.d.w, 0);
+			}
+		} 
+		
+		if(runnext) {
+			if(typeof q.curLine == 'object' && typeof q.curLine.ctxt=='string'
+				&& q.curLine.ctxt.length>0) {
+				//console.log(q.curLine.ctxt);
+				q.curLine.txt+= ' ] TJ ';
+
+				var align = t.style.block.align;
+				if(force && align=='j') align='l';
+				q.align(q.curLine, align);
+
+				q.lineBuffer.push(q.curLine);
+				//console.log('=',q.curLine.ctxt, q.curLine.lead);
+			}
+			q.curLine = {
+				txt: q.fStyle()+' [ ' + q.mkLineInit(),
+				ctxt:'',
+				lead:0,
+				height:0,
+				kwn:false,
+				x:0,
+				xarr:[],
+				w:t.style.block.xw,
+				d:{a:0},
+				lastChunk: {karr:[]}
+			};
 		}
-		q.curLine = {
-			txt: q.fStyle()+' [ ',
-			ctxt:'',
-			lead:0,
-			height:0,
-			kwn:false,
-			x:0,
-			w:t.style.block.xw
-		};
 	};
-	q.writeToLine = function(txt) {
+	q.writeToLine = function(txt, kern) {
+		if(typeof kern=='undefined') kern=false;
 		var l = q.curLine;
-		l.txt += txt[1];
-		l.ctxt += txt[2];
-		l.x+= txt[0];
+		if(kern) {
+			var kval = 0-getValue(l.lastChunk.karr, [txt.code0], 0);
+			if(kval!=0) {
+				l.txt+=' '+kval+' ';
+				//console.log(l.lastChunk.ctxt, txt.ctxt, kval);
+			}
+		}
+		l.txt += txt.txt;
+		l.ctxt += txt.ctxt;
+		l.x+= txt.width;
 		if(l.lead<t.style.font.lead) l.lead=t.style.font.lead;
 		l.height = l.lead;
+		l.lastChunk = txt;
+	};
+	q.moveInLine = function(x,y) {
+		q.curLine.txt+=' ] TJ '+x+' '+y+' TD [ ';
 	};
 
 	q.flushLine();
@@ -158,7 +292,27 @@ function objPageTool(po, style) {
 	//console.log(q.space, q.dash);
 	t.parseLine = function(string, flush) {
 		if(typeof flush!='number') flush = 1;
-		if(flush>1) q.flushLine(); // not sure if we always want to do this or not...
+		if(flush==2 || flush==3) {
+			//console.log('d', t.style.block.drop);
+			if(t.style.block.isDrop) {
+				var dstyle = t.style.block.drop;
+				var dstr = string.substr(0, dstyle.chars);
+				// first push drop style, then flush line to get new style
+				// then write drop, then pop style
+				// last, move to correct line position.
+				t.pushStyle({font:dstyle});
+				var dchrs = t.parseWord(dstr);
+				//console.log(dchrs);
+				q.flushLine(1);
+				q.curLine.d= {a:1, w:dchrs.width, h:dstyle.lead, y:0};
+				q.writeToLine(dchrs);
+				t.popStyle();
+				q.flushLine(0);
+				//console.log(dstyle, dstr);
+				var string = string.substr(dstyle.chars);
+			}
+			else q.flushLine(1);
+		}
 		
 		// write new font style to current line buffer (cl)
 		q.curLine.txt += '] TJ '+q.fStyle()+' [';
@@ -178,32 +332,38 @@ function objPageTool(po, style) {
 			//console.log(arguments);
 			q.fitCheck(txt, brkChr, nextBrk==173);
 		});
-		if(flush>0) q.flushLine(); // not sure if we always want to do this or not...
+		if(flush==1 || flush==3) q.flushLine(1); // not sure if we always want to do this or not...
 	};
 	q.fitCheck = function(txt, brkChr, postShy) {
 		var l = q.curLine;
 		var xrem = l.w-l.x;
+		//console.log(l.w, l.x, l.d.a, txt);
 		bcode = brkChr.charCodeAt(0) || 0;
 		var chunk = t.parseWord(txt);
-		if(bcode!=173 && !(bcode==32 && l.x==0)) var bChunk = t.parseWord(brkChr);
+		var kern = false;
+		if(bcode!=173 
+			&& !(bcode==32 && l.x==0)
+			&& !(bcode==32 && l.d.a==1 && l.x==l.d.w))
+			var bChunk = t.parseWord(brkChr);
 		else { 
 			var bChunk = t.parseWord('');
+			kern = true;
 			//console.log('blank');
 		}
-		xrem -= bChunk[0];
-		xrem -= chunk[0];
-		if((postShy && xrem < q.dash[0])
+		xrem -= bChunk.width;
+		xrem -= chunk.width;
+		if((postShy && xrem < q.dash.width)
 			||(!postShy && xrem < 0)) { 
 			var crap = l.x; // what if we have a single word that is too long for line. what do we do then???
 			if(bcode==173) q.writeToLine(q.dash);
-			q.flushLine();
+			q.flushLine(0);
 			if(crap!=0) q.fitCheck(txt, brkChr, postShy);
 			return;
 		}
 		// we have enough space to use word fragment!
 		//console.log(txt, bChunk);
-		q.writeToLine(bChunk);
-		q.writeToLine(chunk);
+		if(!kern) q.writeToLine(bChunk);
+		q.writeToLine(chunk, kern);
 		//console.log(l.ctxt, bChunk, chunk);
 		//console.log(l);
 	};
@@ -235,10 +395,11 @@ function objPageTool(po, style) {
 		q.curPage.stream = q.box();
 		var pn = t.parseWord('['+cp.num+']');
 		//console.log(cp.num, pn);
-		cp.stream += '\n BT '+cp.curX+' '+cp.curY+' Td '+q.fStyle()+' ['+pn[1]+'] TJ ';
+		cp.stream += '\n BT '+cp.curX+' '+cp.curY+' Td '+q.fStyle()+' ['+pn.txt+'] TJ ';
 	};
 	t.endPage();
 	t.flushPage = function() {
+		q.flushLine(1);
 		var cp = q.curPage;
 		for(var i=0;i<q.lineBuffer.length;i++){
 			var l = q.lineBuffer[i];

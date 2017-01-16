@@ -16,6 +16,11 @@ function fnStyleDefault(obj) {
 	};
 	var block = {
 		align: 'j', // left, right, center, justify
+		get isDrop() { return typeof this.drop == 'object' 
+								&& this.drop != null
+								&& typeof this.drop.chars == 'number'
+								&& this.drop.chars>0; },
+		//drop: { chars: 1, fid: 1, lines: 2, color: '0 1 1 0 k' }, 
 		keepWithNext: false,
 		keepWithPrev: false,
 		keepTogether: false,

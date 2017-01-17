@@ -117,6 +117,12 @@ function objPageTool(po, style) {
 		return ' <a{'+ln+':'+fontf+'}> ';
 	};
 	q.rxLineInit = /<a{(\d*):([\d.]+)}>/g;
+	q.mkHardEnd = function(ln) {
+		ln = ln||'';
+		var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+		return ' <o{'+ln+':'+fontf+'}> ';
+	};
+	q.rxHardEnd = /<o{(\d*):([\d.]+)}>/g;
 	q.mkJustify = function(elastic, ln) {
 		ln = ln||'';
 		elastic = elastic||1;
@@ -136,8 +142,8 @@ function objPageTool(po, style) {
 		l.ctxt += ' (a:'+type+')';
 		if(type=='j') q.alignJ(l);
 		else {
-			var rx = q.rxJustify;
 			l.txt = l.txt.replace(q.rxJustify, '');
+			l.txt = l.txt.replace(q.rxHardEnd, '');
 			l.txt = l.txt.replace(q.rxLineInit,function(m, ln, u) {
 				var upe = parseFloat(u)||1;
 				var sp = (l.w - (l.xarr[ln]||l.x)) * upe;
@@ -152,11 +158,16 @@ function objPageTool(po, style) {
 		var rx = q.rxJustify;
 		var txt = l.txt;
 		var ttl = {};
-		var z1 = []
+		var hend = [];
+		txt = txt.replace(q.rxHardEnd, function(m, ln, u) {
+			hend.push(ln);
+			return '';
+		});
 		// need to get ttl before we can determine what spacing breakdown is
-		txt.replace(rx, function(m, ls, ln, le, i, u) {
+		txt = txt.replace(rx, function(m, ls, ln, le, i, u) {
+			if(hend.indexOf(ln)>=0) return '';
 			ttl[ln] = (ttl[ln]||0) + (parseInt(i) || 0);
-			z1.push(i);
+			return m;
 		});
 		l.txt = txt.replace(rx, function(m, ls, ln, le, i, u) {
 			var s = parseInt(i)||0;
@@ -218,23 +229,24 @@ function objPageTool(po, style) {
 			// if it's a drop line...keep dropping until it's full.
 			if(q.curLine.d.y==0) {
 				//console.log('0', q.curLine.d, q.curLine.ctxt);
-				q.moveInLine(q.curLine.d.w, q.curLine.d.h-t.style.font.lead);
+				q.moveInLine(q.curLine.d.w, q.curLine.d.h-t.style.font.lead, force);
 				q.curLine.d.y+=t.style.font.lead;
 				//q.curLine.xarr.push(q.curLine.x);
 				q.curLine.x = q.curLine.d.w;
 				runnext=0;
 			} else if(q.curLine.d.y<q.curLine.d.h) {
 				//console.log('1', q.curLine.d, q.curLine.ctxt);
-				q.moveInLine(0, -t.style.font.lead);
+				q.moveInLine(0, -t.style.font.lead, force);
 				q.curLine.d.y+=t.style.font.lead;
+				if(q.curLine.d.y>q.height) q.height = q.curLine.d.y
 				q.alignLineNum(q.curLine);
 				q.curLine.x = q.curLine.d.w;
 				runnext=0;
 			} else {
 				//console.log('2', q.curLine.d, q.curLine.ctxt);
 				//console.log(q.curLine.txt);
+				q.moveInLine(-q.curLine.d.w, 0, force);
 				q.alignLineNum(q.curLine);
-				q.moveInLine(-q.curLine.d.w, 0);
 			}
 		} 
 		
@@ -242,10 +254,11 @@ function objPageTool(po, style) {
 			if(typeof q.curLine == 'object' && typeof q.curLine.ctxt=='string'
 				&& q.curLine.ctxt.length>0) {
 				//console.log(q.curLine.ctxt);
-				q.curLine.txt+= ' ] TJ ';
+				var hend = '';
+				if(force||0) hend = q.mkHardEnd(q.curLine.xarr.length);
+				q.curLine.txt+= hend+' ] TJ ';
 
 				var align = t.style.block.align;
-				if(force && align=='j') align='l';
 				q.align(q.curLine, align);
 
 				q.lineBuffer.push(q.curLine);
@@ -282,8 +295,10 @@ function objPageTool(po, style) {
 		l.height = l.lead;
 		l.lastChunk = txt;
 	};
-	q.moveInLine = function(x,y) {
-		q.curLine.txt+=' ] TJ '+x+' '+y+' TD [ ';
+	q.moveInLine = function(x,y, force) {
+		var hend = '';
+		if(force||0) hend = q.mkHardEnd(q.curLine.xarr.length);
+		q.curLine.txt+= hend+' ] TJ '+x+' '+y+' TD [ ';
 	};
 
 	q.flushLine();
@@ -294,7 +309,7 @@ function objPageTool(po, style) {
 		if(typeof flush!='number') flush = 1;
 		if(flush==2 || flush==3) {
 			//console.log('d', t.style.block.drop);
-			if(t.style.block.isDrop) {
+			if(t.style.block.isDrop && q.curLine.d.a==0) {
 				var dstyle = t.style.block.drop;
 				var dstr = string.substr(0, dstyle.chars);
 				// first push drop style, then flush line to get new style

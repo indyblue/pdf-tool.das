@@ -61,7 +61,8 @@ function objPageTool(po, style) {
 
 	q.fStyle = () => {
 		var f = t.style.font;
-		return ' /F'+f.fid+' '+f.size+' Tf '+f.lead+' TL '+f.color+' ';
+		return ' /F'+f.fid+' '+f.size+' Tf '+f.lead+' TL '+f.color+' '
+			+f.spacing+' Tc '+f.rise+' Ts ';
 	};
 	t.popStyle = function() {
 		if(q.stylestack.length>0) q.stylestack.pop();
@@ -114,12 +115,14 @@ function objPageTool(po, style) {
 	q.mkLineInit = function(ln) {
 		ln = ln||'';
 		var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+		//console.log('lineInit', t.style.font.size, t.font.metric.unitsPerEm);
 		return ' <a{'+ln+':'+fontf+'}> ';
 	};
 	q.rxLineInit = /<a{(\d*):([\d.]+)}>/g;
 	q.mkHardEnd = function(ln) {
 		ln = ln||'';
 		var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+		//console.log('hardEnd', t.style.font.size, t.font.metric.unitsPerEm);
 		return ' <o{'+ln+':'+fontf+'}> ';
 	};
 	q.rxHardEnd = /<o{(\d*):([\d.]+)}>/g;
@@ -127,6 +130,7 @@ function objPageTool(po, style) {
 		ln = ln||'';
 		elastic = elastic||1;
 		var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+		//console.log('justify', t.style.font.size, t.font.metric.unitsPerEm);
 		return ' <'+ln+'{'+elastic+':'+fontf+'}> ';
 	};
 	q.rxJustify = /(<)(\d*)({(\d+):([\d.]+)}>)/g;
@@ -161,6 +165,24 @@ function objPageTool(po, style) {
 		var hend = [];
 		txt = txt.replace(q.rxHardEnd, function(m, ln, u) {
 			hend.push(ln);
+			//* This section adds line filler after short lines, generally at the end of a block
+			// currently using ~ but it should use a nice spacer, in a muted color
+			t.pushStyle('tilde');
+			var tilde = t.parseWord('~');
+			var upe = parseFloat(u)||1;
+			upe = t.font.metric.unitsPerEm/t.style.font.size;
+			var sp = (l.w - (l.xarr[ln]||l.x));
+			var cnt = Math.floor(sp / tilde.width)-1;
+			var rem = (cnt*tilde.width - sp) * upe;
+			//console.log('~~~', sp, cnt, rem, u);
+			l.ctxt += ' [sp:' + sp + ', cnt:'+cnt+', rem:'+rem+', w:'+tilde.width+', u:'+u+'] ';
+			if(cnt>0) {
+				rem = (cnt*tilde.width - sp) * upe;
+				var trep = ' ] TJ '+q.fStyle()+' [ '+rem+' '+tilde.txt.repeat(cnt);
+				t.popStyle();
+				return trep;
+			}
+			// */
 			return '';
 		});
 		// need to get ttl before we can determine what spacing breakdown is
@@ -172,7 +194,7 @@ function objPageTool(po, style) {
 		l.txt = txt.replace(rx, function(m, ls, ln, le, i, u) {
 			var s = parseInt(i)||0;
 			var upe = parseFloat(u)||1;
-			var s2 = s/ttl[ln] * (l.w - (l.xarr[ln]||l.x)) * upe;
+			var s2 = s/ttl[ln] * (l.w - (l.xarr[ln]||l.x) + l.endSpacing) * upe;
 			return -s2;
 		});
 		// include info in comment text, for debugging purposes mostly
@@ -195,6 +217,7 @@ function objPageTool(po, style) {
 		var font = t.font;
 		var factor = t.style.font.size / font.metric.unitsPerEm;
 		var chrw = font.cw[code];
+		var spacing = (t.style.font.spacing||0)/factor;
 		if(typeof chrw == 'undefined') chrw = font.metric.missingWidth;
 		var karr = [];
 		if(code1 ==0) karr = getValue(font.kern, [code], []);
@@ -207,7 +230,7 @@ function objPageTool(po, style) {
 		}
 		var chr16be = ube.toString('binary');
 		
-		return {width: chrw, 
+		return {width: chrw + spacing, 
 			kern: chrk, 
 			factor: factor, 
 			karr: karr, 
@@ -257,6 +280,7 @@ function objPageTool(po, style) {
 				var hend = '';
 				if(force||0) hend = q.mkHardEnd(q.curLine.xarr.length);
 				q.curLine.txt+= hend+' ] TJ ';
+				q.curLine.endSpacing = t.style.font.spacing||0;
 
 				var align = t.style.block.align;
 				q.align(q.curLine, align);
@@ -269,6 +293,7 @@ function objPageTool(po, style) {
 				ctxt:'',
 				lead:0,
 				height:0,
+				endSpacing:0,
 				kwn:false,
 				x:0,
 				xarr:[],
@@ -302,8 +327,6 @@ function objPageTool(po, style) {
 	};
 
 	q.flushLine();
-	q.space = t.parseWord(' ');
-	q.dash = t.parseWord('-');
 	//console.log(q.space, q.dash);
 	t.parseLine = function(string, flush) {
 		if(typeof flush!='number') flush = 1;
@@ -315,10 +338,11 @@ function objPageTool(po, style) {
 				// first push drop style, then flush line to get new style
 				// then write drop, then pop style
 				// last, move to correct line position.
+				q.flushLine(1);
 				t.pushStyle({font:dstyle});
 				var dchrs = t.parseWord(dstr);
 				//console.log(dchrs);
-				q.flushLine(1);
+				q.flushLine(0);
 				q.curLine.d= {a:1, w:dchrs.width, h:dstyle.lead, y:0};
 				q.writeToLine(dchrs);
 				t.popStyle();
@@ -367,10 +391,11 @@ function objPageTool(po, style) {
 		}
 		xrem -= bChunk.width;
 		xrem -= chunk.width;
-		if((postShy && xrem < q.dash.width)
+		var dash = t.parseWord('-');
+		if((postShy && xrem < dash.width)
 			||(!postShy && xrem < 0)) { 
 			var crap = l.x; // what if we have a single word that is too long for line. what do we do then???
-			if(bcode==173) q.writeToLine(q.dash);
+			if(bcode==173) q.writeToLine(dash);
 			q.flushLine(0);
 			if(crap!=0) q.fitCheck(txt, brkChr, postShy);
 			return;

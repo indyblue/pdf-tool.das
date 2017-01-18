@@ -13,6 +13,8 @@ function fnStyleDefault(obj) {
 		size: 12,
 		lead: 14,
 		color: '0 g', // '0 1 1 0 k' for red
+		spacing:0,
+		rise:0
 	};
 	var block = {
 		align: 'j', // left, right, center, justify

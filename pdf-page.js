@@ -182,6 +182,7 @@ function objPageTool(po, style) {
 				t.popStyle();
 				return trep;
 			}
+			else t.popStyle();
 			// */
 			return '';
 		});
@@ -261,13 +262,14 @@ function objPageTool(po, style) {
 				//console.log('1', q.curLine.d, q.curLine.ctxt);
 				q.moveInLine(0, -t.style.font.lead, force);
 				q.curLine.d.y+=t.style.font.lead;
-				if(q.curLine.d.y>q.height) q.height = q.curLine.d.y
+				if(q.curLine.d.y>q.curLine.height) q.curLine.height = q.curLine.d.y
 				q.alignLineNum(q.curLine);
 				q.curLine.x = q.curLine.d.w;
 				runnext=0;
 			} else {
 				//console.log('2', q.curLine.d, q.curLine.ctxt);
 				//console.log(q.curLine.txt);
+				if(q.curLine.d.y>q.curLine.height) q.curLine.height = q.curLine.d.y
 				q.moveInLine(-q.curLine.d.w, 0, force);
 				q.alignLineNum(q.curLine);
 			}
@@ -440,14 +442,24 @@ function objPageTool(po, style) {
 	t.endPage();
 	t.flushPage = function() {
 		q.flushLine(1);
+		var ssec = t.style.section;
+		var numCols = ssec.columns;
+		var curCol = 1;
 		var cp = q.curPage;
 		for(var i=0;i<q.lineBuffer.length;i++){
 			var l = q.lineBuffer[i];
 			if(cp.ymin>=cp.curY-l.height) {
-				t.endPage();
-				cp=q.curPage;
+				if(curCol<numCols) {
+					cp.stream += '\n ' + ssec.colShift + ' ' + (cp.y0 - cp.curY) + ' TD '; 
+					console.log(curCol, numCols);
+					cp.curY = cp.y0; curCol++;
+				} else {
+					t.endPage();
+					cp=q.curPage;
+					curCol = 1;
+				}
 			}
-			cp.curY-= l.lead;
+			cp.curY-= l.height;
 			//console.log('=',l.ctxt, cp.curY);
 			cp.stream += '\n% ' + l.ctxt
 				+ '\n 0 '+(0-l.lead)+' TD ' + l.txt;
@@ -457,106 +469,6 @@ function objPageTool(po, style) {
 	//**************************************************************************
 	return t;
 }
-
-/*
-	
-	a page consists of: 
-		inputs (defStyle)
-		internals: blocks.
-		- how to represent parallel text?
-			- do we do this on the block level? representing that blocks are linked somehow?
-			- or at the page level?
-	
-	
-	
-	each block consists of:
-		inputs: (x,y,defStyle,w)
-		internals: h, lines[]
-		- x/y = coords to top left of block
-		- defStyle: font, size, leading, color, alignment
-		- l = leading for first line
-		- blocks will be BT/ET units.
-			- when written, "BT x y Td l TD" will be added to beginning
-			- "ET" will be added to end
-		- blocks will be built line by line.
-			- at least one block must be added to the page.
-			- it will default to start at the top left margin.
-			- default width will be width of page from left to right margin
-		- if a new line will go past end of page:
-			- create new page after current, based on current
-			- create new block on new page.
-			- remove line from current block, add to new block
-			- how to handle keep-w/-next and orphan/widow?
-				- track back through lines, and any with kwn gets bumped also
-				- 
-	
-	lines consist of:
-		width, defStyle, words (array)
-		- width = max width
-		- alignment = left, center, right, justify
-		- lines will be built word by word. 
-		- if adding a word would make the line too long:
-			- array of words will be written to line
-			- words array will be emptied and start over.
-			- OR...do we keep words array, 
-				- add a param to the words for spacing, 
-				- then have a .toString() that prints it?
-
-	words consist of:
-		[ width, spaceFactor, text, u16Text]
-		width = final width of all contents of word block
-		spaceFactor = spacing factor used for justify
-			- all factors will be summed, 
-			- total space needed will be divided up by percentage.
-		text = plain text, however entered
-		u16Text = the ucs16(BE) desired by pdf.
-		- kerning spacing will be built into u16Text: ") n ("
-		- need a delimiter to mark where the justify spacing will go.
-		- how will we handle tab stops?
-			- alignment will automatically become left if tabs are used
-			- tab alignment may be set for that piece
-
-
-	i think i should define an array of styles at the beginning, and then refer to them
-	throughout.
-		- easiest method would be to just reset every single param every time
-		- cleanest method for final pdf would be to diff between prev/next style, 
-			and only do the operation necessary.
-	style:
-		- styles can have any/all of the following.
-		- whatever styles are present 
-			- will be set on entering, reset back on leaving
-			- others will be left alone
-		page level:
-			- header, footer, 
-			- size, margins, border
-			- columns, spacing, separator
-		block level:
-			- padding, margins, border - top, right, bottom, left (or tb lr)
-		line level:
-			- keep with next/prev
-				- use for headers, drop caps, possibly orphan/widow
-			- alignment: left, center, right, justify
-			- tab stops? (also left/center/right justify)
-		char level
-			- font (number, 1-based index of fonts from init)
-			- size [n Tf]
-			- leading [n TL]
-			- color 
-				- [/name CS/cs n SCN/scn] for spots, 
-				- [c m y k K/k] for cmyk, 
-				- [n G/g] for gray, 
-				- RG/rg for rgb (probably should never use)
-			- character spacing [n Tc] (default n=0)
-			- text rise (super, sub) [n Ts] (default n=0)
-			- h-scaling? [n Tz] (default n=100)
-			- rendering mode [n Tr] (default 0=fill, 1=stroke, 2=fill/stroke, 3=invisible, etc 9.3.6)
-		
-	questions:
-		- how are we going to define "styles"? do we want to have some sort of style sheet format?
-
-
-*/
 
 module.exports = {
 	add: (po, style)=> new objPageTool(po, style)

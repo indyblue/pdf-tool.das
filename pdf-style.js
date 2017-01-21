@@ -61,10 +61,12 @@ function fnStyleDefault(obj) {
 		divider: '', // somehow we want to indicate color, width and style?
 		pText: [], // do we indicate parallel languages here?
 		get xw() { 
-			var spaceAll = (this.columns-1)*this.spacing*page.pointsPerUnit;
+			var spaceAll = (this.columns-1)*this.sp;
 			var colWidth = (page.xw - spaceAll) / this.columns;
 			return colWidth;
-		}
+		},
+		get sp() { return this.spacing*page.pointsPerUnit; },
+		get colShift() { return this.xw + this.sp; }
 	};
 	var page = {
 		width: 8.5,

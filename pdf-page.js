@@ -44,6 +44,7 @@ function objPageTool(po, style) {
 	q.basestyle = style;
 	q.incpage = function() {
 		q.basestyle.page.num++;
+		q.stylevalid = 0;
 	};
 	q.stylestack = [];
 

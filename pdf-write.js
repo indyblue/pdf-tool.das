@@ -44,6 +44,7 @@ function writePDF(t) {
 		op.addStream(t.pages[i].writeStream());
 		op.add('endobj');
 		t.pages[i].writePage(op, pagesRef, strRef);
+		//console.log('page',i+1, t.pages.length);
 	}
 
 	// colors
@@ -61,6 +62,7 @@ function writePDF(t) {
 		'>>','endobj');
 
 	// fonts
+	console.log('fonts',t.fonts.length);
 	op.add(op.omake(),'<<', '/ft << /Type/Font /Subtype/Type1 /BaseFont/Times >>');
 	for(var i=0;i<t.fonts.length;i++){
 		op.add('/F'+(i+1)+' '+(startFont+i*5+2)+' 0 R');
@@ -168,6 +170,7 @@ function writePDF(t) {
 	}
 	op.add('endobj');
 	// end the file
+	console.log('xref', op.objs.length);
 	posxref = op.buff.length;
 	op.add('xref', 
 		'0 ' + op.ocnt(),
@@ -184,7 +187,8 @@ function writePDF(t) {
 		'startxref',
 		posxref,
 		'%%EOF');
-	return op.buff;
+	console.log('%%eof');
+	return op.buff();
 }
 
 // tool for appending to the string
@@ -192,12 +196,12 @@ function objPdfAppender() {
 	var op = this;
 	op.eol = os.EOL;
 	op.eol2 = (' '+os.EOL).slice(-2);
-	op.val = {get: ()=> op.buff.toString('binary')};
-	op.buff = Buffer.alloc(0);
+	op.val = ''; //{get: ()=> op.buff.toString('binary')};
+	op.buff = ()=> new Buffer(op.val, 'binary'); //Buffer.alloc(0);
 	op.add = function() {
 		for(var i=0;i<arguments.length;i++) { 
-			op.buff = Buffer.concat([op.buff, new Buffer(arguments[i] + op.eol, 'binary')]);
-			//op.val += arguments[i] + op.eol;
+			//op.buff = Buffer.concat([op.buff, new Buffer(arguments[i] + op.eol, 'binary')]);
+			op.val += arguments[i] + op.eol;
 			//if(arguments[i]=='endobj') op.val += op.eol;
 		}
 		return op;
@@ -263,13 +267,13 @@ function objPdfAppender() {
 	};
 	op.addnl = function() {
 		for(var i=0;i<arguments.length;i++) 
-			op.buff = Buffer.concat([op.buff, new Buffer(arguments[i], 'binary')]);
-			//op.val+=arguments[i];
+			//op.buff = Buffer.concat([op.buff, new Buffer(arguments[i], 'binary')]);
+			op.val+=arguments[i];
 		return op;
 	};
 	op.objs = [0];
 	op.omake = function() {
-		op.objs.push(op.buff.length);
+		op.objs.push(op.val.length);
 		return (op.objs.length-1) + ' 0 obj';
 	};
 	op.ocnt = ()=> op.objs.length;

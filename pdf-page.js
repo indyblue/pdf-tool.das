@@ -32,6 +32,8 @@ function objPageTool(po, style) {
 	var t = this; //visible properties
 	t.pdf = po;
 
+	q.sw = new promise.stopwatch();
+
 	//t.fstring = () => ' /F'+t.fstyle().fid+' '+t.fsize()+' Tf '
 	//	+t.fstyle().flead+' TL '+t.fstyle().color+' ';
 	//t.stream = {};
@@ -45,12 +47,16 @@ function objPageTool(po, style) {
 	};
 	q.stylestack = [];
 
+	q.stylevalid = 0;
 	addPropGS(t, 'style', function() {
-		var newdefstyle = pdfStyle.letter();
-		var props = [newdefstyle, q.basestyle];
-		[].push.apply(props, q.stylestack);
-		var style = extend.apply(null, props);
-		return style;
+		if(q.stylevalid != 1){
+			var newdefstyle = pdfStyle.letter();
+			var props = [newdefstyle, q.basestyle];
+			[].push.apply(props, q.stylestack);
+			q.stylecache = extend.apply(null, props);
+			q.stylevalid = 1;
+		} 
+		return q.stylecache;
 	});
 	addPropGS(t, 'font', function() {
 		var style = t.style;
@@ -65,9 +71,11 @@ function objPageTool(po, style) {
 			+f.spacing+' Tc '+f.rise+' Ts ';
 	};
 	t.popStyle = function() {
+		q.stylevalid = 0;
 		if(q.stylestack.length>0) q.stylestack.pop();
 	};
 	t.pushStyle = function(style) {
+		q.stylevalid = 0;
 		if(typeof style=='string' && typeof t.pdf.styles[style]=='object')
 			q.stylestack.push(t.pdf.styles[style]);
 		else if(typeof style=='object')
@@ -215,10 +223,11 @@ function objPageTool(po, style) {
 		}
 		var code1 = 0;
 		if(typeof chr1 != 'undefined') code1 = chr1.charCodeAt();
+		var style = t.style;
 		var font = t.font;
-		var factor = t.style.font.size / font.metric.unitsPerEm;
+		var factor = style.font.size / font.metric.unitsPerEm;
 		var chrw = font.cw[code];
-		var spacing = (t.style.font.spacing||0)/factor;
+		var spacing = (style.font.spacing||0)/factor;
 		if(typeof chrw == 'undefined') chrw = font.metric.missingWidth;
 		var karr = [];
 		if(code1 ==0) karr = getValue(font.kern, [code], []);
@@ -331,6 +340,7 @@ function objPageTool(po, style) {
 	q.flushLine();
 	//console.log(q.space, q.dash);
 	t.parseLine = function(string, flush) {
+		q.sw.start('parseLine');
 		if(typeof flush!='number') flush = 1;
 		if(flush==2 || flush==3) {
 			//console.log('d', t.style.block.drop);
@@ -374,6 +384,8 @@ function objPageTool(po, style) {
 			q.fitCheck(txt, brkChr, nextBrk==173);
 		});
 		if(flush==1 || flush==3) q.flushLine(1); // not sure if we always want to do this or not...
+		q.sw.stop();
+		//console.log(q.sw.print());
 	};
 	q.fitCheck = function(txt, brkChr, postShy) {
 		var l = q.curLine;
@@ -451,7 +463,7 @@ function objPageTool(po, style) {
 			if(cp.ymin>=cp.curY-l.height) {
 				if(curCol<numCols) {
 					cp.stream += '\n ' + ssec.colShift + ' ' + (cp.y0 - cp.curY) + ' TD '; 
-					console.log(curCol, numCols);
+					//console.log(curCol, numCols);
 					cp.curY = cp.y0; curCol++;
 				} else {
 					t.endPage();

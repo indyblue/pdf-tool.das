@@ -45,6 +45,7 @@ module.exports = {
 	round: fnRound,
 	getValue: fnGetValue,
 	addPropGS: fnAddPropGetSet,
+	stopwatch: fnStopwatch,
 	debug: false
 };
 
@@ -116,4 +117,43 @@ function fnGetValue(obj, key, def) {
 	} else if(typeof obj[key]!== 'undefined')
 		retval = obj[key];
 	return retval;
+}
+
+function fnStopwatch() {
+	var t = this;
+	t.cname = '';
+	t.pnames = [];
+	t.ctime = 0;
+	t.timers = {};
+	t.start = function(name, add) {
+		if(typeof add!='number') add=1;
+		//console.log('sw', name, add, t.cname, t.pnames); 
+		if(add===1 && t.cname!='') {
+			//console.log('push', t.cname, t.pnames); 
+			t.pnames.push(t.cname);
+		}
+		t.stop();
+		t.cname = name;
+		t.ctime = Date.now();
+	};
+	t.revert = function() {
+		var name = '';
+		if(t.pnames.length>0) name = t.pnames.pop();
+		t.start(name, 0);
+	};
+	t.stop = function() {
+		if(t.ctime>0) {
+			if(typeof t.timers[t.cname]!='number') t.timers[t.cname] = 0;
+			t.timers[t.cname] += Date.now() - t.ctime;
+			t.ctime = 0;
+			t.cname = '';
+		}
+	};
+	t.print = function() {
+		return JSON.stringify(t.timers);
+	};
+	t.reset = function() {
+		t.stop();
+		t.timers = {};
+	}
 }

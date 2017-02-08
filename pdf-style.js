@@ -74,8 +74,8 @@ function fnStyleDefault(obj) {
 		margin: 0.75,
 		gutter: 0,
 		num: 1,
-		numPrefix: '',
-		numSuffix: '',
+		header:'',
+		footer:'',
 		
 		getMargin(pos) { // pos 1-top, 2-right, 3-bottom, 4-left
 			if(typeof pos=='string'){

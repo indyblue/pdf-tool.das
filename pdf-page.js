@@ -100,7 +100,8 @@ function objPageTool(po, style) {
 	//**************************************************************************
 	// BASIC CHARACTER/WORD CONVERSIONS
 	//**************************************************************************
-	t.parseWord = function(word) {
+	t.parseWord = function(word, mkJ) {
+		if(typeof mkJ=='undefined') mkJ = true;
 		var width = 0;
 		var code0 = 0;
 		var karr=[];
@@ -113,8 +114,8 @@ function objPageTool(po, style) {
 			//console.log('aw',aw);
 			var fontf = t.font.metric.unitsPerEm/t.style.font.size;
 			txt += aw.chr16be;
-			if(aw.code==32) txt+= ') '+q.mkJustify(1)+' (';
-			else if(aw.code==9) txt+= ') '+q.mkJustify(10)+' (';
+			if(mkJ && aw.code==32) txt+= ') '+q.mkJustify(1)+' (';
+			else if(mkJ && aw.code==9) txt+= ') '+q.mkJustify(10)+' (';
 			else if(aw.kern!=0) txt+= ') '+(0-aw.kern)+' (';
 		}
 		txt += ') ';
@@ -202,7 +203,7 @@ function objPageTool(po, style) {
 			ttl[ln] = (ttl[ln]||0) + (parseInt(i) || 0);
 			return m;
 		});
-		if(ttl['']==1) console.log(l.w, l.xarr, l.x, ttl, l.ctxt);
+		//if(ttl['']==1) console.log(l.w, l.xarr, l.x, ttl, l.ctxt);
 		l.txt = txt.replace(rx, function(m, ls, ln, le, i, u) {
 			var s = parseInt(i)||0;
 			var upe = parseFloat(u)||1;
@@ -284,6 +285,7 @@ function objPageTool(po, style) {
 		} 
 		
 		if(runnext) {
+			var fields = {};
 			if(typeof q.curLine == 'object' && typeof q.curLine.ctxt=='string'
 				&& q.curLine.ctxt.length>0) {
 				//console.log(q.curLine.ctxt);
@@ -301,6 +303,8 @@ function objPageTool(po, style) {
 				q.lineBuffer.push(q.curLine);
 				//console.log('=',q.curLine.ctxt, q.curLine.lead);
 			}
+			else if(typeof q.curLine == 'object') fields = q.curLine.fields;
+
 			q.curLine = {
 				txt: q.fStyle()+' [ ' + q.mkLineInit(),
 				ctxt:'',
@@ -313,10 +317,20 @@ function objPageTool(po, style) {
 				xarr:[],
 				w:t.style.block.xw,
 				d:{a:0},
-				lastChunk: {karr:[]}
+				lastChunk: {karr:[]},
+				fields: fields
 			};
 		}
 	};
+	q.fields = {};
+	t.clearFields = function() {
+		q.fields = {};
+	};
+	t.setField = function(key, val) {
+		q.curLine.fields[key] = val;
+		//console.log(key, val, q.curLine.fields);
+	};
+
 	q.writeToLine = function(txt, kern) {
 		if(typeof kern=='undefined') kern=false;
 		var l = q.curLine;
@@ -342,7 +356,7 @@ function objPageTool(po, style) {
 
 	q.flushLine();
 	//console.log(q.space, q.dash);
-	t.parseLine = function(string, flush) {
+	t.parseLine = function(string, flush, fields) {
 		q.sw.start('parseLine');
 		if(typeof flush!='number') flush = 1;
 		if(flush==2 || flush==3) {
@@ -367,9 +381,9 @@ function objPageTool(po, style) {
 			}
 			else q.flushLine(1);
 		}
-		
 		// write new font style to current line buffer (cl)
 		q.curLine.txt += '] TJ '+q.fStyle()+' [';
+		extend(q.curLine.fields, fields);
 
 		string.replace(/([ \t\n\u00AD]+|^)([^ \t\n\u00AD]*)(?=[ \t\n\u00AD]|$)/g, function(){
 			var brkChr = arguments[1];
@@ -443,46 +457,97 @@ function objPageTool(po, style) {
 	//**************************************************************************
 	t.endPage = function() {
 		if(typeof q.curPage == 'object') {
-			q.curPage.stream+='\n ET ';
+			var htxt = q.pageHeader(1);
+			//console.log(htxt);
+			q.curPage.stream+='\n ET '+htxt;
 			t.pdf.pages.push(q.curPage);
 			q.incpage();
 		}
 		q.curPage = new objPage(t.style.page);
 		var cp = q.curPage;
 		//q.curPage.stream = q.box();
-		var pn = t.parseWord('['+cp.num+']');
+		//var pn = t.parseWord('['+cp.num+']');
+		var htxt = q.pageHeader(-1);
 		//console.log(cp.num, pn);
-		cp.stream += '\n BT '+cp.curX+' '+cp.curY+' Td '+q.fStyle()+' ['+pn.txt+'] TJ ';
+		cp.stream += '\n BT '+cp.curX+' '+cp.curY+' Td '+htxt+' ';
+	};
+	q.pageHeader = function(posFlag) {
+		var hstyle = q.curPage.header;
+		if(typeof hstyle == 'string') {
+			q.curPage.header = hstyle = { right: hstyle, left: hstyle };
+		} 
+		
+		if(typeof hstyle == 'object') {
+			
+			if(typeof hstyle.s=='undefined') {
+				if(q.curPage.num%2==0) hstyle.s = hstyle.left;
+				else hstyle.s = hstyle.right;
+			}
+			if(typeof hstyle.x=='undefined') hstyle.x = q.curPage.x0;
+			if(typeof hstyle.y=='undefined') hstyle.y = q.curPage.y0;
+
+			hstyle.s = q.mergeReplace(hstyle.s, posFlag);
+			
+			if(posFlag>0 && (
+				typeof hstyle.suppress!='object'
+				|| hstyle.suppress.indexOf(q.curPage.num)<0)) {
+				var stylePush = true;
+				if(typeof hstyle.font == 'string') t.pushStyle(hstyle.font);
+				else if(typeof hstyle.font == 'object') t.pushStyle({font:hstyle.font});
+				else stylePush = false;
+
+				harr = hstyle.s.split('\t',3);
+				var cy = 0, w = q.curPage.xw;
+				var htxt = '';
+				htxt += q.fStyle();
+				htxt += ' [ ';
+				if(harr.length>0 && typeof harr[0]=='string' && harr[0].length>0) {
+					var val = t.parseWord(harr[0], false);
+					htxt += ' '+val.txt;
+					cy += val.width;
+				}
+				if(harr.length>1 && typeof harr[1]=='string' && harr[1].length>0) {
+					var val = t.parseWord(harr[1], false);
+					var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+					var offset = (w - val.width)/2 - cy;
+					htxt += ' '+(0-offset*fontf);
+					htxt += ' '+val.txt;
+					cy += val.width + offset;
+				}
+				if(harr.length>2 && typeof harr[2]=='string' && harr[2].length>0) {
+					var val = t.parseWord(harr[2], false);
+					var fontf = t.font.metric.unitsPerEm/t.style.font.size;
+					var offset = (w - val.width - cy);
+					htxt += ' '+(0-offset*fontf);
+					htxt += ' '+val.txt;
+					cy += val.width + offset;
+				}
+				htxt += ' ] TJ ';
+				
+				// change from fill to stroke
+				var color = t.style.font.color.replace(/[a-z]/g, (x)=> x.toUpperCase());
+				htxt = '\n BT '+hstyle.x+' '+(hstyle.y+1)+' Td '+htxt+' ET '
+					+color+' .25 w '+hstyle.x+' '+hstyle.y+' m '+(hstyle.x+w)+' '+hstyle.y+' l S ';
+				if(stylePush) t.popStyle();
+				return htxt;
+			}
+		}
+		return '';
+	};
+	q.mergeReplace = function(txt, posFlag) {
+		return txt.replace(/{([-+]?)([^}]*)}/g, function(m, pos, field){
+			if(field == '#') return q.curPage.num;
+			// for fields, we need a pos to tell us if we want the value
+			// at the beginning or end of the page.
+			else if(typeof q.fields[field] != 'undefined'
+				&& ( (posFlag>0 && pos=='+')
+					|| (posFlag<0 && pos=='-') )) 
+				return q.fields[field];
+			return m;
+		});
 	};
 	t.endPage();
 	t.flushPage = function() {
-		/*** existing
-		q.flushLine(1);
-		var ssec = t.style.section;
-		var numCols = ssec.columns;
-		var curCol = 1;
-		var cp = q.curPage;
-		for(var i=0;i<q.lineBuffer.length;i++){
-			var l = q.lineBuffer[i];
-			if(cp.ymin>=cp.curY-l.height) {
-				if(curCol<numCols) {
-					cp.stream += '\n ' + ssec.colShift + ' ' + (cp.y0 - cp.curY) + ' TD '; 
-					//console.log(curCol, numCols);
-					cp.curY = cp.y0; curCol++;
-				} else {
-					t.endPage();
-					cp=q.curPage;
-					curCol = 1;
-				}
-			}
-			cp.curY-= l.height;
-			//console.log('=',l.ctxt, cp.curY);
-			cp.stream += '\n% ' + l.ctxt
-				+ '\n 0 '+(0-l.lead)+' TD ' + l.txt;
-		}
-		cp.stream+='\n ET ';
-		// ***/
-		//*** new
 		q.flushLine(1);
 		var ssec = t.style.section;
 
@@ -597,9 +662,9 @@ function objPageTool(po, style) {
 				else supere = (maxh-ha) / (cbuf.length-1);
 				if(supere>.1*minLead) supere = 0;
 
-				console.log(cbuf.elastics(), maxh, ha, eadd, 'se', cbuf.length, supere, minLead);
+				//console.log(cbuf.elastics(), maxh, ha, eadd, 'se', cbuf.length, supere, minLead);
 				if(i>0) {
-					var shiftH = prevH; // cp.colBufs[i-1].h() + eadd * elastics.length; // cp.y0 - cp.ymin; // <- TODO?
+					var shiftH = prevH;
 					cp.stream += '\n ' + ssec.colShift + ' ' + shiftH + ' TD '; 
 				}
 				//console.log('  -line', i, cbuf.length, cbuf.h());
@@ -608,6 +673,8 @@ function objPageTool(po, style) {
 					var lead = (0-l.lead) 
 					if(j>0) lead -= supere;
 					if(elastics.indexOf(j)>=0) lead -= eadd;
+					extend(q.fields, l.fields);
+					//if(Object.keys(l.fields).length>0) console.log(cp.num, q.fields, l.fields);
 					cp.stream += '\n% ' + l.ctxt
 						+ '\n 0 '+lead+' TD ' + l.txt;
 				}
@@ -617,7 +684,6 @@ function objPageTool(po, style) {
 			if(pageDone) t.endPage();
 			//console.log('end', q.lineBuffer.length);
 		}
-		// ***/
 	}
 	//**************************************************************************
 	return t;

@@ -11,13 +11,13 @@ var fno = function() {
 		} else if(t.steps.length>0) {
 			if(t.debug) console.log(t.debug, 'promise trigger fn', t.steps.length);
 			var fn = t.steps.shift();
-			if(typeof fn === 'function') fn();
+			if(typeof fn === 'function') fn.apply(null, arguments[0]||[]);
 		} else {
 			t.finally();
 		}
 		return t;
 	};
-	t.trigger = () => { t.next(); };
+	t.trigger = function() { t.next.call(null, [].slice.call(arguments)); };
 	t.start = () => { t.next(); };
 	t.finally = function(cb) {
 		if(arguments.length==0

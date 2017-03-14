@@ -1,6 +1,6 @@
 var fs = require('fs');
 var path = require('path');
-var promise = require('./promise.js');
+var promise = require('das-promise');
 var ttf = require('./ttf_parse.js');
 
 var pdfWrite = require('./pdf-write.js');
@@ -76,12 +76,14 @@ function fnPdf() {
 			fname = path.join(__dirname, fname);
 		fs.writeFile(fname, t.toBuffer(), cb);
 	};
+
 	return t;
 }
 
 
 module.exports = {
-	new: ()=> new fnPdf()
+	new: ()=> new fnPdf(),
+	style: pdfStyle
 };
 
 

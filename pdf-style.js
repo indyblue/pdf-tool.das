@@ -1,4 +1,4 @@
-var promise = require('./promise.js');
+var promise = require('das-promise');
 var round = promise.round;
 var getValue = promise.getValue;
 var extend = promise.extend;

@@ -1,7 +1,7 @@
 var fs = require('fs');
 var path = require('path');
 var promise = require('das-promise');
-var ttf = require('./ttf_parse.js');
+var ttf = require('das-ttf-parse');
 
 var pdfWrite = require('./pdf-write.js');
 var pdfPage = require('./pdf-page.js');
@@ -58,10 +58,7 @@ function fnPdf() {
 			pr.trigger();
 		});
 		pr.next(()=> {
-			var fn = path.join(__dirname, 'ttf_cidinit.txt');
-			fs.readFile(fn, (err, data)=> {
-				if(err) throw err;
-				//console.log(data);
+			ttf.cidinit((data)=> {
 				t.cidinit = data;
 				pr.trigger();
 			});

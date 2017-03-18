@@ -1,5 +1,5 @@
 var pdfStyle = require('./pdf-style.js');
-var promise = require('das-promise');
+var promise = require('promise.das');
 var round = promise.round;
 var extend = promise.extend;
 var addPropGS = promise.addPropGS;

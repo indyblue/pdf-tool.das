@@ -1,7 +1,7 @@
 var fs = require('fs');
 var path = require('path');
-var promise = require('das-promise');
-var ttf = require('das-ttf-parse');
+var promise = require('promise.das');
+var ttf = require('ttf-parse.das');
 
 var pdfWrite = require('./pdf-write.js');
 var pdfPage = require('./pdf-page.js');

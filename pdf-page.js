@@ -233,11 +233,8 @@ function objPageTool(po, style) {
 		if(code1 ==0) karr = getValue(font.kern, [code], []);
 		var chrk = getValue(font.kern, [code, code1], 0);
 
-		var ule = new Buffer(chr, 'utf16le');
-		var ube = Buffer.alloc(ule.length);
-		for(var j=0;j<ule.length;j++){
-			ube[j] = ule[ule.length-j-1];
-		}
+		var ube = new Buffer(chr, 'utf16le');
+		ube.swap16();
 		var chr16be = ube.toString('binary');
 		
 		return {width: chrw + spacing, 

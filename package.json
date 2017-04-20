@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "dependencies": {},
+  "dependencies": {
+  	"promise.das": "git://github.com/indyblue/promise.das.git",
+  	"ttf-parse.das": "git://github.com/indyblue/ttf-parse.das.git",
+	"base85": "latest"
+  },
   "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

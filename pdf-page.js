@@ -4,6 +4,7 @@ var round = promise.round;
 var extend = promise.extend;
 var addPropGS = promise.addPropGS;
 var getValue = promise.getValue;
+var compare = promise.compare;
 
 function objPage(options) {
 	var t = this;
@@ -27,10 +28,11 @@ function objPage(options) {
 	};
 }
 
-function objPageTool(po, style) {
+function objPageTool(po, style, hidden) {
 	var q = {}; //hidden properties
 	var t = this; //visible properties
 	t.pdf = po;
+	if(hidden) t.q = q;
 
 	q.sw = new promise.stopwatch();
 
@@ -51,14 +53,17 @@ function objPageTool(po, style) {
 	q.stylevalid = 0;
 	addPropGS(t, 'style', function() {
 		if(q.stylevalid != 1){
-			var newdefstyle = pdfStyle.letter();
-			var props = [newdefstyle, q.basestyle];
-			[].push.apply(props, q.stylestack);
-			q.stylecache = extend.apply(null, props);
+			q.stylecache = q.calcstyle(q.stylestack);
 			q.stylevalid = 1;
 		} 
 		return q.stylecache;
 	});
+	q.calcstyle = function(stack) {
+		var style = pdfStyle.letter();
+		var props = [style, q.basestyle];
+		[].push.apply(props, stack);
+		return extend.apply(null, props);
+	};
 	addPropGS(t, 'font', function() {
 		var style = t.style;
 		var fid = style.font.fid;
@@ -72,29 +77,40 @@ function objPageTool(po, style) {
 			+f.spacing+' Tc '+f.rise+' Ts ';
 	};
 	t.popStyle = function() {
+		var prestyle = t.style;
+		var newstyle = q.calcstyle(q.stylestack.slice(0,-1));
+		var spchange = q.checkSecPageChange(prestyle, newstyle);
 		q.stylevalid = 0;
-		if(q.stylestack.length>0) q.stylestack.pop();
+		q.stylestack.pop();
+		if(spchange) q.flushLine(1);
+		//q.curPage.stream+='\n% popping, ' + JSON.stringify(t.style.section);
 	};
 	t.pushStyle = function(style) {
-		q.stylevalid = 0;
+		var prestyle = t.style;
 		if(typeof style=='string' && typeof t.pdf.styles[style]=='object')
-			q.stylestack.push(t.pdf.styles[style]);
-		else if(typeof style=='object')
+			style = t.pdf.styles[style];
+		if(typeof style=='object') {
+			var spchange = q.checkSecPageChange(prestyle, style);
+			q.stylevalid = 0;
+			//q.curPage.stream+='\n% pushing ' + JSON.stringify(style.section);
 			q.stylestack.push(style);
-
-		// if setting a page, block or section style, finish old and start new
-		// add style to stack
-		// do we want to mess with this calculated lead stuff?
-		/*
-		var rxlead = /^(\d+)%$/;
-		if(rxlead.test(flead)) {
-			var lead = rxlead.exec(flead)[1] / 100;
-			var font = t.pdf.fonts[t.fid-1];
-			flead = t.fsize * lead * font.metric.capheight / font.metric.unitsPerEm;
-			//console.log(t.fsize, lead, font.metric.capheight , font.metric.unitsPerEm, flead);
-		}
-		*/
+			if(spchange) q.flushLine(1);
+		} else
+			console.log('invalid style', style);
 	};
+	q.checkSecPageChange = function(prestyle, style) {
+		var retval = 0;
+		if(!compare(prestyle.section, style.section, 1)) {
+			t.flushPage();
+			console.log('page flush');
+			retval = 1;
+		} else if(!compare(prestyle.page, style.page, 1)) {
+			t.endPage();
+			console.log('page end');
+			retval = 1;
+		}
+		return retval;
+	}
 	//**************************************************************************
 
 	//**************************************************************************
@@ -166,6 +182,7 @@ function objPageTool(po, style) {
 				else return '';
 			});
 		}
+		//l.ctxt += ' (w:'+l.w +', x:'+l.x +', xarr:'+JSON.stringify(l.xarr) +')';		
 	};
 	q.alignJ = function(l) {
 		l.txt = l.txt.replace(q.rxLineInit,'');
@@ -638,6 +655,7 @@ function objPageTool(po, style) {
 				
 			}
 
+			cp.stream += '\n% begin flush\n';
 			// then we need to write the data and either end the page, 
 			// or reset the y0 so that a future write will start at the correct place
 			//console.log(' -cols',pageDone, cp.colBufs.length);
@@ -660,6 +678,7 @@ function objPageTool(po, style) {
 				if(supere>.1*minLead) supere = 0;
 
 				//console.log(cbuf.elastics(), maxh, ha, eadd, 'se', cbuf.length, supere, minLead);
+				cp.stream += '\n% column '+i+'/'+cp.colBufs.length;
 				if(i>0) {
 					var shiftH = prevH;
 					cp.stream += '\n ' + ssec.colShift + ' ' + shiftH + ' TD '; 
@@ -677,8 +696,16 @@ function objPageTool(po, style) {
 				}
 				var prevH = ha + eadd * elastics.length;
 			}
+			cp.stream += '\n% end flush\n';
 
 			if(pageDone) t.endPage();
+			else {
+				cp.stream += '\n ' + (-ssec.colShift*(cp.colBufs.length-1)) + ' 0 TD '; 
+				console.log(' ' + (-ssec.colShift*(cp.colBufs.length-1)) + ' 0 TD '); 
+				
+				//reset x position
+				console.log(cp.curX, cp.x0, cp.xw);
+			}
 			//console.log('end', q.lineBuffer.length);
 		}
 	}
@@ -687,7 +714,7 @@ function objPageTool(po, style) {
 }
 
 module.exports = {
-	add: (po, style)=> new objPageTool(po, style)
+	add: (po, style)=> new objPageTool(po, style, false)
 };
 
 

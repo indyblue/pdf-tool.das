@@ -102,11 +102,9 @@ function objPageTool(po, style, hidden) {
 		var retval = 0;
 		if(!compare(prestyle.section, style.section, 1)) {
 			t.flushPage();
-			console.log('page flush');
 			retval = 1;
 		} else if(!compare(prestyle.page, style.page, 1)) {
 			t.endPage();
-			console.log('page end');
 			retval = 1;
 		}
 		return retval;
@@ -252,7 +250,8 @@ function objPageTool(po, style, hidden) {
 
 		var ube = new Buffer(chr, 'utf16le');
 		ube.swap16();
-		var chr16be = ube.toString('binary');
+		var chr16be = ube.toString('binary')
+			.replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 		
 		return {width: chrw + spacing, 
 			kern: chrk, 
@@ -677,10 +676,8 @@ function objPageTool(po, style, hidden) {
 				if(elastics.length>0) eadd = (maxh - ha) / elastics.length;
 				else supere = (maxh-ha) / (cbuf.length-1);
 				if(supere>.1*minLead) supere = 0;
-				console.log('eadd', elastics.length, maxh, ha);
 
-				//console.log(cbuf.elastics(), maxh, ha, eadd, 'se', cbuf.length, supere, minLead);
-				cp.stream += `\n% column ${i}/${cp.colBufs.length} sH:${prevH}`;
+				cp.stream += `\n% column ${i}/${cp.colBufs.length} sH:${prevH} mH:${maxh}`;
 				if(i>0) {
 					var shiftH = prevH;
 					cp.stream += '\n ' + ssec.colShift + ' ' + shiftH + ' TD '; 
@@ -695,11 +692,10 @@ function objPageTool(po, style, hidden) {
 					extend(q.fields, l.fields);
 					//if(Object.keys(l.fields).length>0) console.log(cp.num, q.fields, l.fields);
 					prevH -= lead - l.height + l.lead;
-					console.log(round(lead,1), round(prevH,1), i, j, l.ctxt);
+					//console.log(round(lead,1), round(prevH,1), i, j, l.ctxt);
 					cp.stream += '\n% ' + l.ctxt
 						+ '\n 0 '+lead+' TD ' + l.txt;
 				}
-				var prevH = ha + eadd * elastics.length;
 			}
 			cp.stream += '\n% end flush\n';
 
@@ -709,12 +705,59 @@ function objPageTool(po, style, hidden) {
 				var yoff = - maxh + prevH;
 				cp.stream += `\n ${xoff} ${yoff} TD `; 
 				cp.y0 -=  maxh;
-				console.log('y1', cp.y0, maxh);
 				
 			}
 			//console.log('end', q.lineBuffer.length);
 		}
 	}
+	//**************************************************************************
+	//**************************************************************************
+	// HTML WRITING
+	//**************************************************************************
+	t.writeHtml = function(html) {
+		var cheerio = require('cheerio');
+		var $ = cheerio.load(html);
+
+		var allc = [];
+		var clpp = function(item) {
+			if(typeof item == 'number') for(var i=0;i<item;i++) {
+				allc.pop();
+				t.popStyle();
+			}
+			else if(Array.isArray(item)) for(var i=0;i<item.length;i++) {
+				allc.push(item[i]);
+				t.pushStyle(item[i]);
+			}
+		}
+		var nestHtml = function(e, h) {
+			if(typeof h=='undefined') h='';
+			var $e = $(e);
+			$e.each((i,e)=> {
+				var et = e.tagName || e.type;
+				var $e = $(e);
+				var classes = ($e.attr('class')||'').split(/\s+/g).filter(x=> !/^\s*$/.test(x));
+				clpp(classes);
+				if(e.type=='text' && e.data!=null && !/^[\r\n\s]+$/.test(e.data)) {
+//					console.log(h, e.tagName||e.type, allc, $e.contents().length 
+//						|| getValue(e, 'data.length', 0));
+					var txt = e.data.replace(/[\r\n\s]+/g, ' ');
+					var flush = 0;
+					if(t.style.block.isDrop && q.curLine.ctxt.length==0) flush = 2;
+					t.parseLine(txt, flush);
+				}	
+				$e.contents().each((i,e) => {
+					nestHtml(e, h+'.'+et);
+				});
+				clpp(classes.length);
+				if(/^(div|p|h\d)$/i.test(et)) t.parseLine('', 1);
+			});
+		};
+
+		nestHtml($('body'));
+		t.flushPage();
+		t.endPage();
+	};
+
 	//**************************************************************************
 	return t;
 }

@@ -655,11 +655,12 @@ function objPageTool(po, style, hidden) {
 				
 			}
 
-			cp.stream += '\n% begin flush\n';
+			cp.stream += '\n% begin flush '+cp.y0;
 			// then we need to write the data and either end the page, 
 			// or reset the y0 so that a future write will start at the correct place
 			//console.log(' -cols',pageDone, cp.colBufs.length);
-			var maxh = cp.y0 - cp.ymin;
+			var maxh = cp.y0 - cp.ymin,
+				prevH = 0;
 			if(q.lineBuffer.length==0) {
 				var harr = cp.colBufs.map((a)=> a.h());
 				var maxh = Math.max.apply(null, harr);
@@ -676,21 +677,25 @@ function objPageTool(po, style, hidden) {
 				if(elastics.length>0) eadd = (maxh - ha) / elastics.length;
 				else supere = (maxh-ha) / (cbuf.length-1);
 				if(supere>.1*minLead) supere = 0;
+				console.log('eadd', elastics.length, maxh, ha);
 
 				//console.log(cbuf.elastics(), maxh, ha, eadd, 'se', cbuf.length, supere, minLead);
-				cp.stream += '\n% column '+i+'/'+cp.colBufs.length;
+				cp.stream += `\n% column ${i}/${cp.colBufs.length} sH:${prevH}`;
 				if(i>0) {
 					var shiftH = prevH;
 					cp.stream += '\n ' + ssec.colShift + ' ' + shiftH + ' TD '; 
 				}
 				//console.log('  -line', i, cbuf.length, cbuf.h());
+				prevH = 0;
 				for(var j=0;j<cbuf.length;j++){
 					var l = cbuf[j];
 					var lead = (0-l.lead) 
 					if(j>0) lead -= supere;
-					if(elastics.indexOf(j)>=0) lead -= eadd;
+					if(j>0 && elastics.indexOf(j)>=0) lead -= eadd;
 					extend(q.fields, l.fields);
 					//if(Object.keys(l.fields).length>0) console.log(cp.num, q.fields, l.fields);
+					prevH -= lead - l.height + l.lead;
+					console.log(round(lead,1), round(prevH,1), i, j, l.ctxt);
 					cp.stream += '\n% ' + l.ctxt
 						+ '\n 0 '+lead+' TD ' + l.txt;
 				}
@@ -700,11 +705,12 @@ function objPageTool(po, style, hidden) {
 
 			if(pageDone) t.endPage();
 			else {
-				cp.stream += '\n ' + (-ssec.colShift*(cp.colBufs.length-1)) + ' 0 TD '; 
-				console.log(' ' + (-ssec.colShift*(cp.colBufs.length-1)) + ' 0 TD '); 
+				var xoff = (-ssec.colShift*(cp.colBufs.length-1));
+				var yoff = - maxh + prevH;
+				cp.stream += `\n ${xoff} ${yoff} TD `; 
+				cp.y0 -=  maxh;
+				console.log('y1', cp.y0, maxh);
 				
-				//reset x position
-				console.log(cp.curX, cp.x0, cp.xw);
 			}
 			//console.log('end', q.lineBuffer.length);
 		}

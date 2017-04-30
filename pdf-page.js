@@ -398,10 +398,12 @@ function objPageTool(po, style, hidden) {
 		q.curLine.txt += '] TJ '+q.fStyle()+' [';
 		extend(q.curLine.fields, fields);
 
-		string.replace(/([ \t\n\u00AD]+|^)([^ \t\n\u00AD]*)(?=[ \t\n\u00AD]|$)/g, function(){
+		string.replace(/([- \t\n\u00AD]+|^)([^- \t\n\u00AD]*)(?=([- \t\n\u00AD]|$))/g, function(){
 			var brkChr = arguments[1];
 			var txt = arguments[2];
-			var nextBrk = arguments[4].substr(arguments[3]+arguments[0].length,1).charCodeAt(0) || 0;
+			var nextBrk = arguments[3].charCodeAt(0);
+			//console.log(arguments[1], arguments[2], arguments[3], arguments[4]);
+			//var nextBrk = arguments[4].substr(arguments[3]+arguments[0].length,1).charCodeAt(0) || 0;
 			//console.log(brkChr, txt, arguments[3], arguments[0].length, nextBrk);
 			/* procedure:
 					- what do we do about multiple brkChrs?
@@ -424,8 +426,9 @@ function objPageTool(po, style, hidden) {
 		bcode = brkChr.charCodeAt(0) || 0;
 		var chunk = t.parseWord(txt);
 		var kern = false;
-		if(bcode!=173 
+		if(bcode!=173
 			&& !(bcode==32 && l.x==0)
+			&& !(bcode==45 && l.x==0)
 			&& !(bcode==32 && l.d.a==1 && l.x==l.d.w))
 			var bChunk = t.parseWord(brkChr);
 		else { 
@@ -439,7 +442,7 @@ function objPageTool(po, style, hidden) {
 		if((postShy && xrem < dash.width)
 			||(!postShy && xrem < 0)) { 
 			var crap = l.x; // what if we have a single word that is too long for line. what do we do then???
-			if(bcode==173) q.writeToLine(dash);
+			if(bcode==173 || bcode==45) q.writeToLine(dash);
 			q.flushLine(0);
 			if(crap!=0) q.fitCheck(txt, brkChr, postShy);
 			return;
@@ -716,6 +719,7 @@ function objPageTool(po, style, hidden) {
 	//**************************************************************************
 	t.writeHtml = function(html) {
 		var cheerio = require('cheerio');
+		var hyph = require('hyph.la');
 		var $ = cheerio.load(html);
 
 		var allc = [];
@@ -736,11 +740,13 @@ function objPageTool(po, style, hidden) {
 				var et = e.tagName || e.type;
 				var $e = $(e);
 				var classes = ($e.attr('class')||'').split(/\s+/g).filter(x=> !/^\s*$/.test(x));
+				if(/^h\d$/.test(et)) classes.push('head');
 				clpp(classes);
 				if(e.type=='text' && e.data!=null && !/^[\r\n\s]+$/.test(e.data)) {
 //					console.log(h, e.tagName||e.type, allc, $e.contents().length 
 //						|| getValue(e, 'data.length', 0));
 					var txt = e.data.replace(/[\r\n\s]+/g, ' ');
+					txt = hyph(txt);
 					var flush = 0;
 					if(t.style.block.isDrop && q.curLine.ctxt.length==0) flush = 2;
 					t.parseLine(txt, flush);

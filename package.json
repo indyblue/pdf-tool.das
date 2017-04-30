@@ -6,6 +6,7 @@
   "dependencies": {
   	"promise.das": "git://github.com/indyblue/promise.das.git",
   	"ttf-parse.das": "git://github.com/indyblue/ttf-parse.das.git",
+  	"hyph.la": "git://github.com/indyblue/hyph.la.git",
 	"cheerio": "latest",
 	"base85": "latest"
   },

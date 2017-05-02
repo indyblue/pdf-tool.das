@@ -18,11 +18,12 @@ function fnStyleDefault(obj) {
 	};
 	var block = {
 		align: 'j', // left, right, center, justify
-		get isDrop() { return typeof this.drop == 'object' 
+		get isDrop() { return typeof this.drop == 'object'
 								&& this.drop != null
 								&& typeof this.drop.chars == 'number'
 								&& this.drop.chars>0; },
-		//drop: { chars: 1, fid: 1, lines: 2, color: '0 1 1 0 k' }, 
+		//drop: { chars: 1, fid: 1, lines: 2, color: '0 1 1 0 k' },
+		//fill: 'stylename',
 		keepWithNext: false,
 		keepWithPrev: false,
 		keepTogether: false,
@@ -60,7 +61,7 @@ function fnStyleDefault(obj) {
 		spacing: 0.25,
 		divider: '', // somehow we want to indicate color, width and style?
 		pText: [], // do we indicate parallel languages here?
-		get xw() { 
+		get xw() {
 			var spaceAll = (this.columns-1)*this.sp;
 			var colWidth = (page.xw - spaceAll) / this.columns;
 			return colWidth;
@@ -76,7 +77,7 @@ function fnStyleDefault(obj) {
 		num: 1,
 		header:'',
 		footer:'',
-		
+
 		getMargin(pos) { // pos 1-top, 2-right, 3-bottom, 4-left
 			if(typeof pos=='string'){
 				if(/^t$/i.test(pos)) pos = 1;
@@ -88,7 +89,7 @@ function fnStyleDefault(obj) {
 			// gutter left/right
 			var gl = (this.num%2)*this.gutter;
 			var gr = (1-this.num%2)*this.gutter;
-			
+
 			var ret = 0;
 			if(typeof margin=='number') ret = margin;
 			else if(Array.isArray(margin)) {
@@ -96,7 +97,7 @@ function fnStyleDefault(obj) {
 				else if(margin.length==2) {
 					if(pos%2==1) ret = margin[0];
 					else ret = margin[1];
-				} 
+				}
 				else ret = getValue(margin, pos-1, 0);
 			}
 			if(pos==4) ret += gl;
@@ -142,8 +143,8 @@ function fnStyleDefault(obj) {
 
 var defQlegal = {
 	font: { size: 8, lead: 9 },
-	section: { 
-		columns: 2 
+	section: {
+		columns: 2
 	},
 	block: {
 		align: 'j', // left, right, center, justify

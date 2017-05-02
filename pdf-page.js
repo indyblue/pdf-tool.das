@@ -55,7 +55,7 @@ function objPageTool(po, style, hidden) {
 		if(q.stylevalid != 1){
 			q.stylecache = q.calcstyle(q.stylestack);
 			q.stylevalid = 1;
-		} 
+		}
 		return q.stylecache;
 	});
 	q.calcstyle = function(stack) {
@@ -86,6 +86,7 @@ function objPageTool(po, style, hidden) {
 		//q.curPage.stream+='\n% popping, ' + JSON.stringify(t.style.section);
 	};
 	t.pushStyle = function(style) {
+		var retval = 1;
 		var prestyle = t.style;
 		if(typeof style=='string' && typeof t.pdf.styles[style]=='object')
 			style = t.pdf.styles[style];
@@ -95,8 +96,11 @@ function objPageTool(po, style, hidden) {
 			//q.curPage.stream+='\n% pushing ' + JSON.stringify(style.section);
 			q.stylestack.push(style);
 			if(spchange) q.flushLine(1);
-		} else
+		} else {
 			console.log('invalid style', style);
+			retval = 0;
+		}
+		return retval;
 	};
 	q.checkSecPageChange = function(prestyle, style) {
 		var retval = 0;
@@ -135,12 +139,19 @@ function objPageTool(po, style, hidden) {
 		txt += ') ';
 		return {width: width, txt: txt, ctxt: word, code0: code0, karr: karr };
 	};
-	
+
 	q.mkLineInit = function(ln) {
 		ln = ln||'';
 		var fontf = t.font.metric.unitsPerEm/t.style.font.size;
 		//console.log('lineInit', t.style.font.size, t.font.metric.unitsPerEm);
-		return ' <a{'+ln+':'+fontf+'}> ';
+		var retval = ' <a{'+ln+':'+fontf+'}> ';
+		if(q.startBlock() && t.style.block.firstLineIndent>0) {
+			var off = t.style.block.firstLineIndent
+				* t.style.page.pointsPerUnit;
+			//q.curLine
+			retval = [off, -fontf];
+		}
+		return retval;
 	};
 	q.rxLineInit = /<a{(\d*):([\d.]+)}>/g;
 	q.mkHardEnd = function(ln) {
@@ -180,7 +191,7 @@ function objPageTool(po, style, hidden) {
 				else return '';
 			});
 		}
-		//l.ctxt += ' (w:'+l.w +', x:'+l.x +', xarr:'+JSON.stringify(l.xarr) +')';		
+		//l.ctxt += ' (w:'+l.w +', x:'+l.x +', xarr:'+JSON.stringify(l.xarr) +')';
 	};
 	q.alignJ = function(l) {
 		l.txt = l.txt.replace(q.rxLineInit,'');
@@ -192,23 +203,26 @@ function objPageTool(po, style, hidden) {
 			hend.push(ln);
 			//* This section adds line filler after short lines, generally at the end of a block
 			// need to make a style property to turn this on/off
-			t.pushStyle('tilde');
-			var sc = t.parseWord(' ');
-			var tilde = t.parseWord('~');
-			var upe = parseFloat(u)||1;
-			upe = t.font.metric.unitsPerEm/t.style.font.size;
-			var sp = (l.w - (l.xarr.length>0?(l.xarr[ln]||l.w):l.x));
-			var cnt = Math.floor((sp-sc.width) / tilde.width);
-			var rem = (cnt*tilde.width - sp) * upe;
-			//console.log('~~~', m, sp, cnt, rem, u, l.xarr, l.x, l.ctxt);
-			//l.ctxt += ' ['+m+', c'+c+', sp:' + sp + ', cnt:'+cnt+', rem:'+rem+', w:'+tilde.width+', u:'+u+'] ';
-			if(cnt>0) {
-				rem = (cnt*tilde.width - sp) * upe;
-				var trep = ' ] TJ '+q.fStyle()+' [ '+rem+' '+tilde.txt.repeat(cnt);
-				t.popStyle();
-				return trep;
+			var fill = getValue(t.style, 'block.fill', '');
+			if(fill!='' && t.pushStyle(fill)) {
+				//console.log('~~~', l.ctxt, q.stylestack);
+				var sc = t.parseWord(' ');
+				var tilde = t.parseWord('~');
+				var upe = parseFloat(u)||1;
+				upe = t.font.metric.unitsPerEm/t.style.font.size;
+				var sp = (l.w - (l.xarr.length>0?(l.xarr[ln]||l.w):l.x));
+				var cnt = Math.floor((sp-sc.width) / tilde.width);
+				var rem = (cnt*tilde.width - sp) * upe;
+				//console.log('~~~', m, sp, cnt, rem, u, l.xarr, l.x, l.ctxt);
+				//l.ctxt += ' ['+m+', c'+c+', sp:' + sp + ', cnt:'+cnt+', rem:'+rem+', w:'+tilde.width+', u:'+u+'] ';
+				if(cnt>0) {
+					rem = (cnt*tilde.width - sp) * upe;
+					var trep = ' ] TJ '+q.fStyle()+' [ '+rem+' '+tilde.txt.repeat(cnt);
+					t.popStyle();
+					return trep;
+				}
+				else t.popStyle();
 			}
-			else t.popStyle();
 			// */
 			return '';
 		});
@@ -252,11 +266,11 @@ function objPageTool(po, style, hidden) {
 		ube.swap16();
 		var chr16be = ube.toString('binary')
 			.replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-		
-		return {width: chrw + spacing, 
-			kern: chrk, 
-			factor: factor, 
-			karr: karr, 
+
+		return {width: chrw + spacing,
+			kern: chrk,
+			factor: factor,
+			karr: karr,
 			code: wcode,
 			chr: chr,
 			chr16be: chr16be };
@@ -267,11 +281,19 @@ function objPageTool(po, style, hidden) {
 	// BASIC LINE MANIPULATION
 	//**************************************************************************
 	q.lineBuffer = [];
+	q.startBlock = function() {
+		var lb = q.lineBuffer;
+		if(q.curLine.ctxt==''
+			&& (lb.length==0
+				|| lb[lb.length-1].hardEnd))
+			return 1;
+		else return 0;
+	};
 	q.flushLine = function(force) {
 		if(typeof force=='undefined') force=0;
 		var runnext=1;
-		if(typeof q.curLine=='object' && q.curLine.d.a==1) {
-			
+		if(q.isCurLine() && q.curLine.d.a==1) {
+
 			// if it's a drop line...keep dropping until it's full.
 			if(q.curLine.d.y==0) {
 				//console.log('0', q.curLine.d, q.curLine.ctxt);
@@ -295,11 +317,10 @@ function objPageTool(po, style, hidden) {
 				q.moveInLine(-q.curLine.d.w, 0, force);
 				q.alignLineNum(q.curLine);
 			}
-		} 
-		
+		}
+
 		if(runnext) {
-			var fields = {};
-			if(typeof q.curLine == 'object' && typeof q.curLine.ctxt=='string'
+			if(q.isCurLine() && typeof q.curLine.ctxt=='string'
 				&& q.curLine.ctxt.length>0) {
 				//console.log(q.curLine.ctxt);
 				var hend = '';
@@ -316,24 +337,39 @@ function objPageTool(po, style, hidden) {
 				q.lineBuffer.push(q.curLine);
 				//console.log('=',q.curLine.ctxt, q.curLine.lead);
 			}
-			else if(typeof q.curLine == 'object') fields = q.curLine.fields;
 
-			q.curLine = {
-				txt: q.fStyle()+' [ ' + q.mkLineInit(),
-				ctxt:'',
-				lead:0,
-				height:0,
-				endSpacing:0,
-				hardEnd: 0,
-				kwn:false,
-				x:0,
-				xarr:[],
-				w:t.style.block.xw,
-				d:{a:0},
-				lastChunk: {karr:[]},
-				fields: fields
-			};
+			q.curLine = null;
 		}
+	};
+	q._curLine = null;
+	addPropGS(q, 'curLine', ()=> {
+		if(!q.isCurLine()) q.newCurLine();
+		return q._curLine;
+	}, x=> { q._curLine = x; });
+	q.isCurLine = ()=> typeof q._curLine=='object' && q._curLine!=null;
+	q.newCurLine = ()=> {
+		var fields = {};
+		if(q.isCurLine()) fields = q.curLine.fields;
+		q.curLine = {
+			txt: q.fStyle()+' [ ',
+			ctxt:'',
+			lead:0,
+			height:0,
+			endSpacing:0,
+			hardEnd: 0,
+			kwn:false,
+			x:0,
+			xarr:[],
+			w:t.style.block.xw,
+			d:{a:0},
+			lastChunk: {karr:[]},
+			fields: fields
+		};
+		var linit = q.mkLineInit();
+		if(Array.isArray(linit)) {
+			q.curLine.txt += linit.reduce((a,b)=> a*b)+' ';
+			q.curLine.x += linit[0];
+		} else q.curLine.txt += linit;
 	};
 	q.fields = {};
 	t.clearFields = function() {
@@ -431,7 +467,7 @@ function objPageTool(po, style, hidden) {
 			&& !(bcode==45 && l.x==0)
 			&& !(bcode==32 && l.d.a==1 && l.x==l.d.w))
 			var bChunk = t.parseWord(brkChr);
-		else { 
+		else {
 			var bChunk = t.parseWord('');
 			kern = true;
 			//console.log('blank');
@@ -440,7 +476,7 @@ function objPageTool(po, style, hidden) {
 		xrem -= chunk.width;
 		var dash = t.parseWord('-');
 		if((postShy && xrem < dash.width)
-			||(!postShy && xrem < 0)) { 
+			||(!postShy && xrem < 0)) {
 			var crap = l.x; // what if we have a single word that is too long for line. what do we do then???
 			if(bcode==173 || bcode==45) q.writeToLine(dash);
 			q.flushLine(0);
@@ -491,10 +527,10 @@ function objPageTool(po, style, hidden) {
 		var hstyle = q.curPage.header;
 		if(typeof hstyle == 'string') {
 			q.curPage.header = hstyle = { right: hstyle, left: hstyle };
-		} 
-		
+		}
+
 		if(typeof hstyle == 'object') {
-			
+
 			if(typeof hstyle.s=='undefined') {
 				if(q.curPage.num%2==0) hstyle.s = hstyle.left;
 				else hstyle.s = hstyle.right;
@@ -503,7 +539,7 @@ function objPageTool(po, style, hidden) {
 			if(typeof hstyle.y=='undefined') hstyle.y = q.curPage.y0;
 
 			hstyle.s = q.mergeReplace(hstyle.s, posFlag);
-			
+
 			if(posFlag>0 && (
 				typeof hstyle.suppress!='object'
 				|| hstyle.suppress.indexOf(q.curPage.num)<0)) {
@@ -539,7 +575,7 @@ function objPageTool(po, style, hidden) {
 					cy += val.width + offset;
 				}
 				htxt += ' ] TJ ';
-				
+
 				// change from fill to stroke
 				var color = t.style.font.color.replace(/[a-z]/g, (x)=> x.toUpperCase());
 				htxt = '\n BT '+hstyle.x+' '+(hstyle.y+1)+' Td '+htxt+' ET '
@@ -557,7 +593,7 @@ function objPageTool(po, style, hidden) {
 			// at the beginning or end of the page.
 			else if(typeof q.fields[field] != 'undefined'
 				&& ( (posFlag>0 && pos=='+')
-					|| (posFlag<0 && pos=='-') )) 
+					|| (posFlag<0 && pos=='-') ))
 				return q.fields[field];
 			return m;
 		});
@@ -589,7 +625,7 @@ function objPageTool(po, style, hidden) {
 			return t;
 		};
 		var fncmp = (a,b)=> Math.pow(a,2)+Math.pow(b,2);
-		
+
 		// each page will be an iteration of while loop
 		while(q.lineBuffer.length>0){
 			var curCol = 1;
@@ -604,7 +640,7 @@ function objPageTool(po, style, hidden) {
 				var l = q.lineBuffer[0];
 				if(cp.ymin>=cp.curY-l.height) {
 					if(curCol<cp.numCols) {
-						cp.curY = cp.y0; 
+						cp.curY = cp.y0;
 						curCol++;
 					} else {
 						pageDone=true;
@@ -646,7 +682,7 @@ function objPageTool(po, style, hidden) {
 							var l = cp.colBufs[j].pop();
 							cp.colBufs[j+1].unshift(l);
 							action=true;
-						} 
+						}
 					}
 					//console.log('ttl', i, ttlH, ttlH/cp.numCols, map());
 					if(!action) {
@@ -654,11 +690,11 @@ function objPageTool(po, style, hidden) {
 						kmax++;
 					}
 				}
-				
+
 			}
 
 			cp.stream += '\n% begin flush '+cp.y0;
-			// then we need to write the data and either end the page, 
+			// then we need to write the data and either end the page,
 			// or reset the y0 so that a future write will start at the correct place
 			//console.log(' -cols',pageDone, cp.colBufs.length);
 			var maxh = cp.y0 - cp.ymin,
@@ -683,13 +719,13 @@ function objPageTool(po, style, hidden) {
 				cp.stream += `\n% column ${i}/${cp.colBufs.length} sH:${prevH} mH:${maxh}`;
 				if(i>0) {
 					var shiftH = prevH;
-					cp.stream += '\n ' + ssec.colShift + ' ' + shiftH + ' TD '; 
+					cp.stream += '\n ' + ssec.colShift + ' ' + shiftH + ' TD ';
 				}
 				//console.log('  -line', i, cbuf.length, cbuf.h());
 				prevH = 0;
 				for(var j=0;j<cbuf.length;j++){
 					var l = cbuf[j];
-					var lead = (0-l.lead) 
+					var lead = (0-l.lead)
 					if(j>0) lead -= supere;
 					if(j>0 && elastics.indexOf(j)>=0) lead -= eadd;
 					extend(q.fields, l.fields);
@@ -706,9 +742,9 @@ function objPageTool(po, style, hidden) {
 			else {
 				var xoff = (-ssec.colShift*(cp.colBufs.length-1));
 				var yoff = - maxh + prevH;
-				cp.stream += `\n ${xoff} ${yoff} TD `; 
+				cp.stream += `\n ${xoff} ${yoff} TD `;
 				cp.y0 -=  maxh;
-				
+
 			}
 			//console.log('end', q.lineBuffer.length);
 		}
@@ -733,6 +769,7 @@ function objPageTool(po, style, hidden) {
 				t.pushStyle(item[i]);
 			}
 		}
+		var flush = 0;
 		var nestHtml = function(e, h) {
 			if(typeof h=='undefined') h='';
 			var $e = $(e);
@@ -742,20 +779,20 @@ function objPageTool(po, style, hidden) {
 				var classes = ($e.attr('class')||'').split(/\s+/g).filter(x=> !/^\s*$/.test(x));
 				if(/^h\d$/.test(et)) classes.push('head');
 				clpp(classes);
+				if(t.style.block.isDrop && /^(div|p|h\d)$/i.test(et)) flush = 2;
 				if(e.type=='text' && e.data!=null && !/^[\r\n\s]+$/.test(e.data)) {
-//					console.log(h, e.tagName||e.type, allc, $e.contents().length 
+//					console.log(h, e.tagName||e.type, allc, $e.contents().length
 //						|| getValue(e, 'data.length', 0));
 					var txt = e.data.replace(/[\r\n\s]+/g, ' ');
 					txt = hyph(txt);
-					var flush = 0;
-					if(t.style.block.isDrop && q.curLine.ctxt.length==0) flush = 2;
 					t.parseLine(txt, flush);
-				}	
+					flush = 0;
+				}
 				$e.contents().each((i,e) => {
 					nestHtml(e, h+'.'+et);
 				});
-				clpp(classes.length);
 				if(/^(div|p|h\d)$/i.test(et)) t.parseLine('', 1);
+				clpp(classes.length);
 			});
 		};
 

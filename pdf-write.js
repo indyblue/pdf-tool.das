@@ -1,13 +1,15 @@
 var os = require('os');
 var zlib = require('zlib');
 var b85 = require('base85');
+var promise = require('promise.das');
+var round = promise.round;
 
 function writePDF(t) {
 	var op = new objPdfAppender();
 
 	// start the file
 	op.add('%PDF-1.5');
-	
+
 	// start pages
 	var numroot = op.ocnt();
 	op.add(
@@ -20,7 +22,7 @@ function writePDF(t) {
 	console.log('pages',t.pages.length);
 	var startColor = 3+(2*t.pages.length)+1;
 	var startFont = startColor + t.colors.length + 1;
-	
+
 	var pagesRef = op.ocnt();
 	op.add(op.omake(),
 		' << /Type /Pages',
@@ -75,33 +77,6 @@ function writePDF(t) {
 
 	for(var i=0;i<t.fonts.length;i++){
 		var f = t.fonts[i];
-		/* first attempt, standard truetype.
-		op.add(op.omake(),'<<',
-			' /Type/Font',
-			' /Subtype/TrueType',
-			' /BaseFont/'+(f.metric.name),
-			' /Name/'+(f.metric.name),
-			' /FirstChar 32 /LastChar 255');
-		op.addnl(' /Widths [');
-		for(var j=0;j<256;j++){
-			var w = f.metric.missingWidth;
-			if(typeof f.cw[j] !=='undefined') w = f.cw[j];
-			op.addnl(' '+w);
-		}
-		op.add(' ]',' <<',
-			'  /Type/FontDescriptor',
-			'  /FontName/'+(f.metric.name));
-		var kfd = Object.keys(f.fdesc);
-		for(var j=0;j<kfd.length;j++){
-			var key = kfd[j];
-			var val = f.fdesc[key];
-			op.add('  /'+key+' '+val);
-		}
-		op.add('  /FontFile2 '+op.ocnt()+' 0 R',
-			' >>',
-			'/Encoding /WinAnsiEncoding',
-			'>>','endobj');
-		*/
 		op.add(op.omake(),'<<',
 			'/Type /Font',
 			'/Subtype /Type0',
@@ -146,6 +121,7 @@ function writePDF(t) {
 		for(var j=0;j<kfd.length;j++){
 			var key = kfd[j];
 			var val = f.fdesc[key];
+			if(typeof val == 'number') val = round(val,2);
 			op.add('  /'+key+' '+val);
 		}
 		op.add('  /FontFile2 '+(op.ocnt()+1)+' 0 R',
@@ -164,7 +140,7 @@ function writePDF(t) {
 			}
 			return ctgb.toString('binary');
 		})(f.ctg));
-		
+
 		op.add('endobj').add(op.omake());
 		op.addStreamZ85(f.raw);
 	}
@@ -172,7 +148,7 @@ function writePDF(t) {
 	// end the file
 	console.log('xref', op.objs.length);
 	posxref = op.buff.length;
-	op.add('xref', 
+	op.add('xref',
 		'0 ' + op.ocnt(),
 		'0'.repeat(10)+' 65535 f');
 	for(var i=1;i<op.objs.length;i++)
@@ -199,7 +175,7 @@ function objPdfAppender() {
 	op.val = ''; //{get: ()=> op.buff.toString('binary')};
 	op.buff = ()=> new Buffer(op.val, 'binary'); //Buffer.alloc(0);
 	op.add = function() {
-		for(var i=0;i<arguments.length;i++) { 
+		for(var i=0;i<arguments.length;i++) {
 			//op.buff = Buffer.concat([op.buff, new Buffer(arguments[i] + op.eol, 'binary')]);
 			op.val += arguments[i] + op.eol;
 			//if(arguments[i]=='endobj') op.val += op.eol;
@@ -261,12 +237,12 @@ function objPdfAppender() {
 		else if(typeof opts == 'object') {
 			opts['Filter'] = filter;
 			opts['Length1'] = l1;
-		} 
+		}
 		else opts = [' /Filter '+filter, ' /Length1 '+l1];
 		op.addStream(z85, opts);
 	};
 	op.addnl = function() {
-		for(var i=0;i<arguments.length;i++) 
+		for(var i=0;i<arguments.length;i++)
 			//op.buff = Buffer.concat([op.buff, new Buffer(arguments[i], 'binary')]);
 			op.val+=arguments[i];
 		return op;

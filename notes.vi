@@ -7,7 +7,7 @@ what is the appropriate interaction between style and page objects?
 - adding new text:
 	- use section.xw for width, to build lines
 	- lines go into an array of objs
-	- if the lines have a stay together imperative, 
+	- if the lines have a stay together imperative,
 		they get added to the same array entry.
 - line array:
 	- {h, text}

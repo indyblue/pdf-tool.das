@@ -73,7 +73,7 @@ function objPageTool(po, style, hidden) {
 
 	q.fStyle = () => {
 		var f = t.style.font;
-		return ' /F'+f.fid+' '+f.size+' Tf '+f.lead+' TL '+f.color+' '
+		return ' /F'+f.fid+' '+round(f.size,2)+' Tf '+round(f.lead,2)+' TL '+f.color+' '
 			+f.spacing+' Tc '+f.rise+' Ts ';
 	};
 	t.popStyle = function() {
@@ -187,7 +187,7 @@ function objPageTool(po, style, hidden) {
 				var upe = parseFloat(u)||1;
 				var sp = (l.w - (l.xarr[ln]||l.x)) * upe;
 				if(type=='r') return -sp;
-				else if(type=='c') return -sp/2;
+				else if(type=='c') return round(-sp/2,2);
 				else return '';
 			});
 		}
@@ -216,7 +216,7 @@ function objPageTool(po, style, hidden) {
 				//console.log('~~~', m, sp, cnt, rem, u, l.xarr, l.x, l.ctxt);
 				//l.ctxt += ' ['+m+', c'+c+', sp:' + sp + ', cnt:'+cnt+', rem:'+rem+', w:'+tilde.width+', u:'+u+'] ';
 				if(cnt>0) {
-					rem = (cnt*tilde.width - sp) * upe;
+					rem = round((cnt*tilde.width - sp) * upe,2);
 					var trep = ' ] TJ '+q.fStyle()+' [ '+rem+' '+tilde.txt.repeat(cnt);
 					t.popStyle();
 					return trep;
@@ -237,7 +237,7 @@ function objPageTool(po, style, hidden) {
 			var s = parseInt(i)||0;
 			var upe = parseFloat(u)||1;
 			var s2 = s/ttl[ln] * (l.w - (l.xarr[ln]||l.x) + l.endSpacing) * upe;
-			return -s2;
+			return round(-s2,2);
 		});
 		// include info in comment text, for debugging purposes mostly
 		//l.ctxt += ' (w:'+l.w +', x:'+l.x +', xarr:'+JSON.stringify(l.xarr) +', ttl:'+JSON.stringify(ttl) +')';
@@ -400,7 +400,7 @@ function objPageTool(po, style, hidden) {
 	q.moveInLine = function(x,y, force) {
 		var hend = '';
 		if(force||0) hend = q.mkHardEnd(q.curLine.xarr.length);
-		q.curLine.txt+= hend+' ] TJ '+x+' '+y+' TD [ ';
+		q.curLine.txt+= hend+' ] TJ '+round(x,2)+' '+round(y,2)+' TD [ ';
 	};
 
 	q.flushLine();
@@ -521,7 +521,7 @@ function objPageTool(po, style, hidden) {
 		//var pn = t.parseWord('['+cp.num+']');
 		var htxt = q.pageHeader(-1);
 		//console.log(cp.num, pn);
-		cp.stream += '\n BT '+cp.curX+' '+cp.curY+' Td '+htxt+' ';
+		cp.stream += '\n BT '+round(cp.curX,2)+' '+round(cp.curY,2)+' Td '+htxt+' ';
 	};
 	q.pageHeader = function(posFlag) {
 		var hstyle = q.curPage.header;
@@ -562,7 +562,7 @@ function objPageTool(po, style, hidden) {
 					var val = t.parseWord(harr[1], false);
 					var fontf = t.font.metric.unitsPerEm/t.style.font.size;
 					var offset = (w - val.width)/2 - cy;
-					htxt += ' '+(0-offset*fontf);
+					htxt += ' '+round(0-offset*fontf,2);
 					htxt += ' '+val.txt;
 					cy += val.width + offset;
 				}
@@ -570,7 +570,7 @@ function objPageTool(po, style, hidden) {
 					var val = t.parseWord(harr[2], false);
 					var fontf = t.font.metric.unitsPerEm/t.style.font.size;
 					var offset = (w - val.width - cy);
-					htxt += ' '+(0-offset*fontf);
+					htxt += ' '+round(0-offset*fontf,2);
 					htxt += ' '+val.txt;
 					cy += val.width + offset;
 				}
@@ -578,8 +578,9 @@ function objPageTool(po, style, hidden) {
 
 				// change from fill to stroke
 				var color = t.style.font.color.replace(/[a-z]/g, (x)=> x.toUpperCase());
-				htxt = '\n BT '+hstyle.x+' '+(hstyle.y+1)+' Td '+htxt+' ET '
-					+color+' .25 w '+hstyle.x+' '+hstyle.y+' m '+(hstyle.x+w)+' '+hstyle.y+' l S ';
+				htxt = '\n BT '+round(hstyle.x,2)+' '+round(hstyle.y+1,2)+' Td '+htxt+' ET '
+					+color+' .25 w '+round(hstyle.x,2)+' '+round(hstyle.y,2)
+					+' m '+round(hstyle.x+w,2)+' '+round(hstyle.y,2)+' l S ';
 				if(stylePush) t.popStyle();
 				return htxt;
 			}
@@ -625,75 +626,60 @@ function objPageTool(po, style, hidden) {
 			return t;
 		};
 		var fncmp = (a,b)=> Math.pow(a,2)+Math.pow(b,2);
+		var colbufH = () => cp.colBufs.map(x=> x.h()- colheight );
+
 
 		// each page will be an iteration of while loop
 		while(q.lineBuffer.length>0){
-			var curCol = 1;
 			var cp = q.curPage;
 			cp.numCols = ssec.columns;
 			cp.colBufs = [];
-			var map = () => cp.colBufs.map((x)=> x.h()- ttlH/cp.numCols );
-			cp.curY = cp.y0;
-			var pageDone = false;
-			// get all the lines we can for the page...unshift them into a new column buffer?
-			while(q.lineBuffer.length>0){
-				var l = q.lineBuffer[0];
-				if(cp.ymin>=cp.curY-l.height) {
-					if(curCol<cp.numCols) {
-						cp.curY = cp.y0;
-						curCol++;
-					} else {
-						pageDone=true;
-						break;
-					}
-				}
-				if(typeof cp.colBufs[curCol-1]=='undefined') cp.colBufs[curCol-1] = bufArr();
-				var cbuf = cp.colBufs[curCol-1];
-				q.lineBuffer.shift();
-				cbuf.push(l);
-				//cbuf.h = (cbuf.h||0) + l.height;
-				cp.curY -= l.height;
+
+			var lbttl = q.lineBuffer.reduce((t,x)=> t+x.height, 0);
+			var minheight = Math.min.apply(null, q.lineBuffer.map(x=> x.height));
+
+			var maxheight = (cp.y0 - cp.ymin);
+			var colheight = maxheight;
+			var pageDone = true;
+			//console.log(lbttl, minheight, colheight, cp.numCols, q.lineBuffer.length);
+			if(colheight*cp.numCols > lbttl) {
+				colheight = lbttl / cp.numCols;
+				pageDone = false;
 			}
 
-			// once we have them in a col buffer, we need to balance the lengths,
-			// and do vertical align
-			if(!pageDone){
-				var ttlH = 0;
-				for(var i=0;i<cp.numCols;i++) {
-					if(typeof cp.colBufs[i] == 'undefined') cp.colBufs[i] = bufArr();
-					ttlH += cp.colBufs[i].h();
-				}
-				var kmax = 1;
-				for(var i=0;i<100;i++) {
-					var action = false;
-					for(var j=0;j<(m=map()).length-1;j++){
-						var mj = m[j], lh = cp.colBufs[j].lh(), subaction = false, cmp=0, cmpb=0;
-						for(var k=j+1;k<Math.min(j+kmax+1,m.length);k++) {
-							var mk = m[k];
-							cmpb += fncmp(mj, mk);
-							cmp += fncmp(mj-lh, mk+lh);
-							if(cmpb > cmp){
-								subaction=true;
-								break;
-							}
-							mj = mk + lh;
-						}
-						if(subaction) {
-							var l = cp.colBufs[j].pop();
-							cp.colBufs[j+1].unshift(l);
-							action=true;
-						}
+			var j=0;
+			for(;colheight<=maxheight;colheight+=2) {
+				if(maxheight<minheight+2) colheight = maxheight;
+				var curCol = 1;
+				var colcnt = [0];
+				var coly = []
+				var y = 0;
+				for(var i=0;i<q.lineBuffer.length;i++){
+					var l = q.lineBuffer[i];
+					if(y+l.height> colheight) {
+						if(curCol<cp.numCols) {
+							y = 0;
+							curCol++;
+						} else break;
 					}
-					//console.log('ttl', i, ttlH, ttlH/cp.numCols, map());
-					if(!action) {
-						if(kmax>=m.length) break;
-						kmax++;
-					}
+					colcnt[curCol] = i+1;
+					y += l.height;
+					coly[curCol-1] = y;
 				}
-
+				if(Math.max.apply(null,colcnt)==q.lineBuffer.length) break;
+				j++;
 			}
 
-			cp.stream += '\n% begin flush '+cp.y0;
+			console.log('flushing', round(colheight,2), coly, colcnt, q.lineBuffer.length, j);
+
+			for(var i=1;i<=colcnt.length;i++){
+				var delcnt = colcnt[i] - colcnt[i-1];
+				if(typeof cp.colBufs[i-1]=='undefined') cp.colBufs[i-1] = bufArr();
+				var items = q.lineBuffer.splice(0, delcnt);
+				[].push.apply(cp.colBufs[i-1], items);
+			}
+
+			cp.stream += '\n% begin flush '+round(cp.y0,2);
 			// then we need to write the data and either end the page,
 			// or reset the y0 so that a future write will start at the correct place
 			//console.log(' -cols',pageDone, cp.colBufs.length);
@@ -705,7 +691,7 @@ function objPageTool(po, style, hidden) {
 			}
 			for(var i=0;i<cp.colBufs.length;i++){
 				var cbuf = cp.colBufs[i];
-				var minLead = Math.min.apply(null, cbuf.map((a)=> a.lead));
+				if(!cbuf) continue;
 				var elastics = cbuf.elastics();
 				var ha = cbuf.h();
 
@@ -714,12 +700,12 @@ function objPageTool(po, style, hidden) {
 				var supere = 0;
 				if(elastics.length>0) eadd = (maxh - ha) / elastics.length;
 				else supere = (maxh-ha) / (cbuf.length-1);
-				if(supere>.1*minLead) supere = 0;
+				if(supere>.1*minheight) supere = 0;
 
-				cp.stream += `\n% column ${i}/${cp.colBufs.length} sH:${prevH} mH:${maxh}`;
+				cp.stream += `\n% column ${i}/${cp.colBufs.length} sH:${round(prevH,2)} mH:${round(maxh,2)}`;
 				if(i>0) {
 					var shiftH = prevH;
-					cp.stream += '\n ' + ssec.colShift + ' ' + shiftH + ' TD ';
+					cp.stream += '\n ' + round(ssec.colShift,2) + ' ' + round(shiftH,2) + ' TD ';
 				}
 				//console.log('  -line', i, cbuf.length, cbuf.h());
 				prevH = 0;
@@ -727,21 +713,21 @@ function objPageTool(po, style, hidden) {
 					var l = cbuf[j];
 					var lead = (0-l.lead)
 					if(j>0) lead -= supere;
-					if(j>0 && elastics.indexOf(j)>=0) lead -= eadd;
+					if(elastics.indexOf(j)>=0) lead -= eadd;
 					extend(q.fields, l.fields);
 					//if(Object.keys(l.fields).length>0) console.log(cp.num, q.fields, l.fields);
 					prevH -= lead - l.height + l.lead;
 					//console.log(round(lead,1), round(prevH,1), i, j, l.ctxt);
 					cp.stream += '\n% ' + l.ctxt
-						+ '\n 0 '+lead+' TD ' + l.txt;
+						+ '\n 0 '+round(lead,2)+' TD ' + l.txt;
 				}
 			}
 			cp.stream += '\n% end flush\n';
 
 			if(pageDone) t.endPage();
 			else {
-				var xoff = (-ssec.colShift*(cp.colBufs.length-1));
-				var yoff = - maxh + prevH;
+				var xoff = round((-ssec.colShift*(cp.colBufs.length-1)),2);
+				var yoff = round(- maxh + prevH,2);
 				cp.stream += `\n ${xoff} ${yoff} TD `;
 				cp.y0 -=  maxh;
 

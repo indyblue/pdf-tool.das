@@ -21,7 +21,7 @@ function fnPdf() {
 			pr.trigger();
 		};
 		for(var i=0;i<fonts.length;i++) ((ix)=> pr.next(()=> {
-			ttf.parse(fonts[ix], cbit); 
+			ttf.parse(fonts[ix], cbit);
 		}) )(i);
 		pr.finally(()=> { cb(fontInfo); })
 		.start();
@@ -66,7 +66,7 @@ function fnPdf() {
 		.finally(cb)
 		.start();;
 	};
-	
+
 	t.toBuffer = ()=> pdfWrite.write(t),
 	t.save = function(fname, cb) {
 		if(!path.isAbsolute(fname))

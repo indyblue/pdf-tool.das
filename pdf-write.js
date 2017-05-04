@@ -48,6 +48,27 @@ function writePDF(t) {
 		t.pages[i].writePage(op, pagesRef, strRef);
 		//console.log('page',i+1, t.pages.length);
 	}
+	/* n-up pages: need to track stream obj numbers, 
+	//	then create a new set of pages, using /Contents [] array method
+	//	page pairs for book: (n=pages if even, pages+1 if odd) [n, 1], [n-1, 2], [n-2, 3], etc.
+	//	signatures: n=num sheets: [n*4, 1], [n*4-1, 2], [n*4-2, 3]
+	//		- for last signature, best to fill with blank pages until page count = n*4
+	// 
+9 0 obj
+ << /Length 500 >>
+stream
+ q 1 0 0 1 0 0 cm 
+% half size
+ q .5 0 0 .5 0 0 cm 
+% translate (x=0, y=250)
+ q 1 0 0 1 0 250 cm
+% flip (origin is top right corner in this case)
+ q -1 0 0 -1 1000 750 cm
+% pop back to state at last 'q'
+ Q
+endstream
+endobj
+	// */
 
 	// colors
 	op.add(op.omake(),'<<',

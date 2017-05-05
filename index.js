@@ -33,6 +33,7 @@ function fnPdf() {
 		t.fonts = [];
 		t.styles = {};
 		t.colors = [];
+		t.layout = {};
 		t.cidinit = '';
 	};
 	t.reset();
@@ -53,6 +54,7 @@ function fnPdf() {
 			pr.trigger();
 		});
 		else t.styles['default'] = pdfStyle['letter'];
+		promise.extend(t.layout, options.layout);
 		pr.next(()=> {
 			t.page = pdfPage.add(t, t.styles['default']);
 			pr.trigger();

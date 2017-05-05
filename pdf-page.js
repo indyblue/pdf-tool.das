@@ -462,9 +462,9 @@ function objPageTool(po, style, hidden) {
 		bcode = brkChr.charCodeAt(0) || 0;
 		var chunk = t.parseWord(txt);
 		var kern = false;
-		if(bcode!=173
-			&& !(bcode==32 && l.x==0)
-			&& !(bcode==45 && l.x==0)
+		if(bcode!=173 // shy
+			&& !(bcode==32 && l.x==0) // space
+			&& !(bcode==45 && l.x==0) // dash
 			&& !(bcode==32 && l.d.a==1 && l.x==l.d.w))
 			var bChunk = t.parseWord(brkChr);
 		else {
@@ -670,7 +670,7 @@ function objPageTool(po, style, hidden) {
 				j++;
 			}
 
-			console.log('flushing', round(colheight,2), coly, colcnt, q.lineBuffer.length, j);
+			//console.log('flushing', round(colheight,2), coly, colcnt, q.lineBuffer.length, j);
 
 			for(var i=1;i<=colcnt.length;i++){
 				var delcnt = colcnt[i] - colcnt[i-1];
@@ -784,7 +784,7 @@ function objPageTool(po, style, hidden) {
 
 		nestHtml($('body'));
 		t.flushPage();
-		t.endPage();
+		//t.endPage();
 	};
 
 	//**************************************************************************

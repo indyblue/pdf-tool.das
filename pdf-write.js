@@ -3,6 +3,7 @@ var zlib = require('zlib');
 var b85 = require('base85');
 var promise = require('promise.das');
 var round = promise.round;
+var arraydim = promise.arraydim;
 
 function writePDF(t) {
 	var op = new objPdfAppender();
@@ -35,6 +36,27 @@ function writePDF(t) {
 		' >>',
 		'endobj');
 
+	var pcnt = t.pages.length;
+	if(t.layout) {
+		var tl = t.layout;
+		if(tl.book) {
+			var bkpg = pcnt - pcnt%4 + 4;
+			var pgs = [];
+			// TODO: signature calculations.
+			for(var i=1;i<=bkpg/2;i++){
+				var side = [i>pcnt?0:i];
+				var side2 = (bkpg-i+1)>pcnt?0:(bkpg-i+1);
+				if(i%2==0) side.unshift(side2);
+				else side.push(side2);
+				pgs.push(side);
+			}
+		}
+		// results in array of 2-up booklet pages, rounded up to 4, 
+		// with zeros inserted for blank filler pages
+		console.log(JSON.stringify(pgs), pgs.length/2);
+		//TODO: stacking/folding - stacking first, since that's what we use for quarter-legal
+		//TODO: finish integrating this into the following two routines
+	}
 	op.add(op.omake()).addnl('[');
 	for(var i=0;i<t.pages.length;i++){
 		op.addnl((op.ocnt()+i*2+1) + ' 0 R ');

@@ -20,17 +20,16 @@ function writePDF(t) {
 		' >>',
 		'endobj');
 
+	var refs = {};
 	console.log('pages',t.pages.length);
-	var startColor = 3+(2*t.pages.length)+1;
-	var startFont = startColor + t.colors.length + 1;
 
 	var pagesRef = op.ocnt();
 	op.add(op.omake(),
 		' << /Type /Pages',
 		'  /Kids '+op.ocnt()+' 0 R',
 		'  /Resources <<',
-		'    /Font '+startFont+' 0 R',
-		'    /ColorSpace '+startColor+' 0 R',
+		'    /Font '+op.relref('fonts',0)+' 0 R',
+		'    /ColorSpace '+op.relref('colors',0)+' 0 R',
 		'  >>',
 		'  /Count '+t.pages.length,
 		' >>',
@@ -93,6 +92,7 @@ endobj
 	// */
 
 	// colors
+	refs.colors = op.ocnt();
 	op.add(op.omake(),'<<',
 		'/CsRed [ /Separation /RedLetter /DeviceCMYK',
 		' << /FunctionType 2 /Domain [0 1]',
@@ -107,10 +107,11 @@ endobj
 		'>>','endobj');
 
 	// fonts
+	refs.fonts = op.ocnt();
 	console.log('fonts',t.fonts.length);
 	op.add(op.omake(),'<<', '/ft << /Type/Font /Subtype/Type1 /BaseFont/Times >>');
 	for(var i=0;i<t.fonts.length;i++){
-		op.add('/F'+(i+1)+' '+(startFont+i*5+2)+' 0 R');
+		op.add('/F'+(i+1)+' '+op.relref('fonts',i*5+2)+' 0 R');
 	}
 	op.add('>>','endobj');
 	var cidi = op.ocnt();
@@ -189,6 +190,7 @@ endobj
 	}
 	op.add('endobj');
 	// end the file
+	op.fixrelrefs(refs);
 	console.log('xref', op.objs.length);
 	posxref = op.buff.length;
 	op.add('xref',
@@ -291,6 +293,23 @@ function objPdfAppender() {
 		return op;
 	};
 	op.objs = [0];
+	op.relref = (rel,off)=> '{{'+rel+(off>=0?'+':'-')+off+'}}';
+	op.fixrelrefs = function(refo) {
+		var keys = Object.keys(refo);
+		console.log('relrefs', refo, keys);
+		for(var i=0;i<keys.length;i++){
+			var rx = new RegExp('\\{\\{('+keys[i]+')([-+]\\d+)?\\}\\}','ig');
+			console.log(rx);
+			op.val = op.val.replace(rx, function(m, key, off) {
+				console.log(key, off, refo[key]+parseInt(off));
+				return refo[key] + parseInt(off);
+			});
+		}
+		op.val.replace(/(\d+) 0 obj/g, function(m, i, pos) {
+			console.log([i], op.objs[i], pos);
+			op.objs[i] = pos;
+		});
+	};
 	op.omake = function() {
 		op.objs.push(op.val.length);
 		return (op.objs.length-1) + ' 0 obj';

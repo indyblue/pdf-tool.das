@@ -21,17 +21,17 @@ function writePDF(t) {
 		'endobj');
 
 	var refs = {};
-	console.log('pages',t.pages.length);
 
 	var pagesRef = op.ocnt();
 	op.add(op.omake(),
 		' << /Type /Pages',
-		'  /Kids '+op.ocnt()+' 0 R',
+		'  /Kids [',op.startapp('pagearr'),
+		'   ]',
 		'  /Resources <<',
 		'    /Font '+op.relref('fonts',0)+' 0 R',
 		'    /ColorSpace '+op.relref('colors',0)+' 0 R',
 		'  >>',
-		'  /Count '+t.pages.length,
+		'  /Count '+op.startapp('pagecnt'),
 		' >>',
 		'endobj');
 
@@ -45,30 +45,62 @@ function writePDF(t) {
 			for(var i=1;i<=bkpg/2;i++){
 				var side = [i>pcnt?0:i];
 				var side2 = (bkpg-i+1)>pcnt?0:(bkpg-i+1);
-				if(i%2==0) side.unshift(side2);
+				if(i%2==1) side.unshift(side2);
 				else side.push(side2);
 				pgs.push(side);
 			}
+			console.log(JSON.stringify(pgs), pgs.length/2);
 		}
 		// results in array of 2-up booklet pages, rounded up to 4, 
 		// with zeros inserted for blank filler pages
-		console.log(JSON.stringify(pgs), pgs.length/2);
 		//TODO: stacking/folding - stacking first, since that's what we use for quarter-legal
 		//TODO: finish integrating this into the following two routines
 	}
-	op.add(op.omake()).addnl('[');
-	for(var i=0;i<t.pages.length;i++){
-		op.addnl((op.ocnt()+i*2+1) + ' 0 R ');
-	}
-	op.add(']','endobj');
+	var pgwritten = 0;
 	for(var i=0;i<t.pages.length;i++){
 		var strRef = op.ocnt();
+		t.pages[i].streamRef = strRef;
 		op.add(op.omake());
 		op.addStream(t.pages[i].writeStream());
 		op.add('endobj');
+		op.addapp('pagearr', op.ocnt() + ' 0 R ');
 		t.pages[i].writePage(op, pagesRef, strRef);
+		pgwritten++;
 		//console.log('page',i+1, t.pages.length);
 	}
+//*
+	if(pgs && pgs.length) {
+		var w = t.pages[0].ptwidth * 2;
+		var h = t.pages[0].ptheight;
+		var gsr = op.ocnt();
+		op.add(op.omake()).addStream('Q').add('endobj');
+		var gs1 = op.ocnt();
+		op.add(op.omake()).addStream('q 1 0 0 1 0 0 cm').add('endobj');
+		var gs2 = op.ocnt();
+		op.add(op.omake()).addStream('q 1 0 0 1 '+(w/2)+' 0 cm').add('endobj');
+
+		for(var i=0;i<pgs.length;i++){
+			var p = pgs[i];
+			var strefs = p.map(x=> x>0?t.pages[x-1].streamRef+' 0 R':'');
+			op.addapp('pagearr', op.ocnt() + ' 0 R ');
+			op.add(op.omake(),
+				' << /Type/Page',
+				'  /Parent '+pagesRef+' 0 R',
+				'  /Contents [',
+					gs1+' 0 R',
+					strefs[0],
+					gsr+' 0 R',
+					gs2+' 0 R',
+					strefs[1],
+					gsr+' 0 R',
+					']',
+				'  /MediaBox [0 0 '+w+' '+h+']',
+				' >>','endobj');
+			console.log(p, strefs);
+			pgwritten++;
+		}
+	}
+// */
 	/* n-up pages: need to track stream obj numbers, 
 	//	then create a new set of pages, using /Contents [] array method
 	//	page pairs for book: (n=pages if even, pages+1 if odd) [n, 1], [n-1, 2], [n-2, 3], etc.
@@ -90,6 +122,10 @@ stream
 endstream
 endobj
 	// */
+	console.log('pages',pgwritten);
+	op.addapp('pagecnt', pgwritten);
+	op.addapp('pagecnt', '');
+	op.addapp('pagearr', '');
 
 	// colors
 	refs.colors = op.ocnt();
@@ -109,11 +145,8 @@ endobj
 	// fonts
 	refs.fonts = op.ocnt();
 	console.log('fonts',t.fonts.length);
-	op.add(op.omake(),'<<', '/ft << /Type/Font /Subtype/Type1 /BaseFont/Times >>');
-	for(var i=0;i<t.fonts.length;i++){
-		op.add('/F'+(i+1)+' '+op.relref('fonts',i*5+2)+' 0 R');
-	}
-	op.add('>>','endobj');
+	op.add(op.omake(),'<<', '/ft << /Type/Font /Subtype/Type1 /BaseFont/Times >>',
+		op.startapp('fontarr'), '>>','endobj');
 	var cidi = op.ocnt();
 	op.add(op.omake());
 	op.addStreamZ85(t.cidinit);
@@ -121,6 +154,7 @@ endobj
 
 	for(var i=0;i<t.fonts.length;i++){
 		var f = t.fonts[i];
+		op.addapp('fontarr', '/F'+(i+1)+' '+op.ocnt()+' 0 R\n');
 		op.add(op.omake(),'<<',
 			'/Type /Font',
 			'/Subtype /Type0',
@@ -188,6 +222,8 @@ endobj
 		op.add('endobj').add(op.omake());
 		op.addStreamZ85(f.raw);
 	}
+	op.addapp('fontarr', '');
+
 	op.add('endobj');
 	// end the file
 	op.fixrelrefs(refs);
@@ -296,19 +332,29 @@ function objPdfAppender() {
 	op.relref = (rel,off)=> '{{'+rel+(off>=0?'+':'-')+off+'}}';
 	op.fixrelrefs = function(refo) {
 		var keys = Object.keys(refo);
-		console.log('relrefs', refo, keys);
+		//console.log('relrefs', refo, keys);
 		for(var i=0;i<keys.length;i++){
 			var rx = new RegExp('\\{\\{('+keys[i]+')([-+]\\d+)?\\}\\}','ig');
-			console.log(rx);
+			//console.log(rx);
 			op.val = op.val.replace(rx, function(m, key, off) {
 				console.log(key, off, refo[key]+parseInt(off));
 				return refo[key] + parseInt(off);
 			});
 		}
 		op.val.replace(/(\d+) 0 obj/g, function(m, i, pos) {
-			console.log([i], op.objs[i], pos);
+			//console.log([i], op.objs[i], pos);
 			op.objs[i] = pos;
 		});
+	};
+	op.startapp = ref => '{{~~'+ref+'~~}}';
+	op.addapp = (ref, txt) => {
+		var rx = new RegExp('\\{\\{~~('+ref+')~~\\}\\}','ig');
+		//console.log(rx);
+		op.val = op.val.replace(rx, function(m, key, off) {
+			//console.log(key, txt);
+			if(txt=='') return '';
+			else return txt + ' ' + m;
+		});		
 	};
 	op.omake = function() {
 		op.objs.push(op.val.length);

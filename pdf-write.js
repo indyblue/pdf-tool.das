@@ -36,25 +36,38 @@ function writePDF(t) {
 		'endobj');
 
 	var pcnt = t.pages.length;
+	var rup = (i,m)=>i - (i%m||m) + m;
 	if(t.layout) {
 		var tl = t.layout;
 		if(tl.book) {
-			var bkpg = pcnt - pcnt%4 + 4;
+			var bkpg = rup(pcnt,4);
+			var sigpg = (tl.sig||0) * 4;
+			if(sigpg)
+				bkpg = rup(pcnt,sigpg);
+			else sigpg = bkpg;
+			var sigs = bkpg / sigpg;
 			var pgs = [];
-			// TODO: signature calculations.
-			for(var i=1;i<=bkpg/2;i++){
-				var side = [i>pcnt?0:i];
-				var side2 = (bkpg-i+1)>pcnt?0:(bkpg-i+1);
-				if(i%2==1) side.unshift(side2);
-				else side.push(side2);
-				pgs.push(side);
+			for(var j=0;j<sigs;j++){
+				for(var i=1;i<=sigpg/2;i++){
+					// first/last pages of current sig
+					var side = [j*sigpg + i];
+					if(side>pcnt) side = [0];
+					var side2 = sigpg*(j+1) - i +1;
+					if(side2>pcnt) side2 = 0;
+					if(i%2==1) side.unshift(side2);
+					else side.push(side2);
+					pgs.push(side);
+				}
 			}
-			console.log(JSON.stringify(pgs), pgs.length/2);
+			if(tl.stack) {
+				var spcnt = rup(pgs.length/2,2);
+				var spgs = [];
+				for(var i=0;i<spcnt;i++){
+					spgs.push([].concat(pgs[i], (pgs[spcnt+i]||[0,0])));
+				}
+				pgs = spgs;
+			}
 		}
-		// results in array of 2-up booklet pages, rounded up to 4, 
-		// with zeros inserted for blank filler pages
-		//TODO: stacking/folding - stacking first, since that's what we use for quarter-legal
-		//TODO: finish integrating this into the following two routines
 	}
 	var pgwritten = 0;
 	for(var i=0;i<t.pages.length;i++){
@@ -63,22 +76,35 @@ function writePDF(t) {
 		op.add(op.omake());
 		op.addStream(t.pages[i].writeStream());
 		op.add('endobj');
-		op.addapp('pagearr', op.ocnt() + ' 0 R ');
-		t.pages[i].writePage(op, pagesRef, strRef);
-		pgwritten++;
+		if(!pgs) {
+			op.addapp('pagearr', op.ocnt() + ' 0 R ');
+			t.pages[i].writePage(op, pagesRef, strRef);
+			pgwritten++;
+		}
 		//console.log('page',i+1, t.pages.length);
 	}
-//*
+
 	if(pgs && pgs.length) {
 		var w = t.pages[0].ptwidth * 2;
 		var h = t.pages[0].ptheight;
-		var gsr = op.ocnt();
+		if(t.layout.stack) h*=2;
+		var Q = op.ocnt() + ' 0 R';
 		op.add(op.omake()).addStream('Q').add('endobj');
-		var gs1 = op.ocnt();
+		var q1 = op.ocnt() + ' 0 R';
 		op.add(op.omake()).addStream('q 1 0 0 1 0 0 cm').add('endobj');
-		var gs2 = op.ocnt();
+		var q2 = op.ocnt() + ' 0 R';
 		op.add(op.omake()).addStream('q 1 0 0 1 '+(w/2)+' 0 cm').add('endobj');
-
+		var qtop = op.ocnt() + ' 0 R';
+		op.add(op.omake()).addStream('q 1 0 0 1 0 '+(h/2)+' cm').add('endobj');
+		var qflip = op.ocnt() + ' 0 R';
+		op.add(op.omake()).addStream('q -1 0 0 -1 '+w+' '+(h/2)+' cm').add('endobj');
+		var lswc = '.1 w 0 .2 .2 0 K ';
+		var vls = op.ocnt() + ' 0 R';
+		op.add(op.omake()).addStream(lswc+(w/2)+' 0 m '+(w/2)+' '+h+' l S').add('endobj');
+		var hls = op.ocnt() + ' 0 R';
+		op.add(op.omake()).addStream(lswc+'0 '+(h/2)+' m '+w+' '+(h/2)+' l S').add('endobj');
+		//% flip (origin is top right corner in this case)
+		// q -1 0 0 -1 1000 750 cm
 		for(var i=0;i<pgs.length;i++){
 			var p = pgs[i];
 			var strefs = p.map(x=> x>0?t.pages[x-1].streamRef+' 0 R':'');
@@ -86,42 +112,18 @@ function writePDF(t) {
 			op.add(op.omake(),
 				' << /Type/Page',
 				'  /Parent '+pagesRef+' 0 R',
-				'  /Contents [',
-					gs1+' 0 R',
-					strefs[0],
-					gsr+' 0 R',
-					gs2+' 0 R',
-					strefs[1],
-					gsr+' 0 R',
-					']',
+				'  /Contents [');
+			if(t.layout.stack) op.add(qtop, q1, strefs[0], Q, q2, strefs[1], Q, Q,
+				qflip, q1, strefs[2], Q, q2, strefs[3], Q, Q, vls, hls);
+			else op.add(q1, strefs[0], Q, q2, strefs[1], Q, vls);
+			op.add(']',
 				'  /MediaBox [0 0 '+w+' '+h+']',
 				' >>','endobj');
 			console.log(p, strefs);
 			pgwritten++;
 		}
 	}
-// */
-	/* n-up pages: need to track stream obj numbers, 
-	//	then create a new set of pages, using /Contents [] array method
-	//	page pairs for book: (n=pages if even, pages+1 if odd) [n, 1], [n-1, 2], [n-2, 3], etc.
-	//	signatures: n=num sheets: [n*4, 1], [n*4-1, 2], [n*4-2, 3]
-	//		- for last signature, best to fill with blank pages until page count = n*4
-	// 
-9 0 obj
- << /Length 500 >>
-stream
- q 1 0 0 1 0 0 cm 
-% half size
- q .5 0 0 .5 0 0 cm 
-% translate (x=0, y=250)
- q 1 0 0 1 0 250 cm
-% flip (origin is top right corner in this case)
- q -1 0 0 -1 1000 750 cm
-% pop back to state at last 'q'
- Q
-endstream
-endobj
-	// */
+
 	console.log('pages',pgwritten);
 	op.addapp('pagecnt', pgwritten);
 	op.addapp('pagecnt', '');

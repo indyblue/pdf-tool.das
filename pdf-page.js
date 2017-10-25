@@ -233,6 +233,17 @@ function objPageTool(po, style, hidden) {
 			return m;
 		});
 		//if(ttl['']==1) console.log(l.w, l.xarr, l.x, ttl, l.ctxt);
+		/* this calculates places where spaces will be extremely large 
+		// - Tc (char space) or Tz (scale) would be options to reduce space
+		// I think Tc looks better, but calculation is harder...
+		var sc = t.parseWord(' ');
+		for(var i in ttl){
+			var w = (l.w - (l.xarr[i]||l.x) + l.endSpacing);
+			var uw = w / ttl[i];
+			if(uw/sc.width > 3) console.log(i, round(uw/sc.width,2), l.ctxt);
+		}
+		// */
+
 		l.txt = txt.replace(rx, function(m, ls, ln, le, i, u) {
 			var s = parseInt(i)||0;
 			var upe = parseFloat(u)||1;

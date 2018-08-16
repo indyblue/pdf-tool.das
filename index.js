@@ -12,23 +12,23 @@ function fnPdf() {
 	var t = this;
 
 	/***** LOCAL FUNCTIONS *****/
-	var initFonts = function(fonts, fontInfo, cb) {
+	var initFonts = function (fonts, fontInfo, cb) {
 		var pr = promise.new();
 
-		var cbit = function(f) {
+		var cbit = function (f) {
 			ttf.save('', f, null);
 			fontInfo.push(f);
 			pr.trigger();
 		};
-		for(var i=0;i<fonts.length;i++) ((ix)=> pr.next(()=> {
-			ttf.parse(fonts[ix], cbit);
-		}) )(i);
-		pr.finally(()=> { cb(fontInfo); })
-		.start();
+		for (var i = 0; i < fonts.length; i++) ((ix) => pr.next(() => {
+			ttf.parse(fonts[ix]).then(cbit);
+		}))(i);
+		pr.finally(() => { cb(fontInfo); })
+			.start();
 	};
 
 	/***** PROPERTIES/METHODS *****/
-	t.reset = function() {
+	t.reset = function () {
 		t.pages = [];
 		t.fonts = [];
 		t.styles = {};
@@ -38,42 +38,43 @@ function fnPdf() {
 	};
 	t.reset();
 
-	t.init = function(options, cb) {
+	t.init = function (options, cb) {
 		var pr = promise.new();
-		if(Array.isArray(options.fonts))
-			pr.next(()=> { initFonts(options.fonts, t.fonts, pr.trigger) });
+		if (Array.isArray(options.fonts))
+			pr.next(() => { initFonts(options.fonts, t.fonts, pr.trigger) });
 		t.styles.default = pdfStyle.letter();
-		if(typeof options.styles=='object') pr.next(()=>{
-			for(var key in options.styles){
+		if (typeof options.styles == 'object') pr.next(() => {
+			for (var key in options.styles) {
 				var val = options.styles[key];
-				if(typeof val == 'string' && typeof pdfStyle[val]=='function')
+				if (typeof val == 'string' && typeof pdfStyle[val] == 'function')
 					val = pdfStyle[val]();
-				if(typeof t.styles[key]!=='object') t.styles[key]={};
-				promise.extend(t.styles[key],val);
+				if (typeof t.styles[key] !== 'object') t.styles[key] = {};
+				promise.extend(t.styles[key], val);
 			}
 			pr.trigger();
 		});
 		else t.styles['default'] = pdfStyle['letter'];
 		promise.extend(t.layout, options.layout);
-		pr.next(()=> {
+		pr.next(() => {
 			t.page = pdfPage.add(t, t.styles['default']);
 			pr.trigger();
 		});
-		pr.next(()=> {
-			ttf.cidinit((data)=> {
+		pr.next(() => {
+			ttf.cidinit().then(data => {
 				t.cidinit = data;
 				pr.trigger();
 			});
 		})
-		.finally(cb)
-		.start();;
+			.finally(cb)
+			.start();;
 	};
 
-	t.toBuffer = ()=> pdfWrite.write(t),
-	t.save = function(fname, cb) {
-		if(!path.isAbsolute(fname))
+	t.toBuffer = () => pdfWrite.write(t);
+	t.save = async function (fname) {
+		if (!path.isAbsolute(fname))
 			fname = path.join(__dirname, fname);
-		fs.writeFile(fname, t.toBuffer(), cb);
+		const buff = await t.toBuffer();
+		return fs.writeFile(fname, buff);
 	};
 
 	return t;
@@ -81,7 +82,7 @@ function fnPdf() {
 
 
 module.exports = {
-	new: ()=> new fnPdf(),
+	new: () => new fnPdf(),
 	style: pdfStyle
 };
 
